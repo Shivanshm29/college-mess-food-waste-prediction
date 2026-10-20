@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interactive HCI Wireframe Prototype Viewer — College Mess System</title>
+  <style>
+    :root {
+      --bg: #F8F9FA;
+      --wire-border: #D1D5DB;
+      --wire-border-dark: #4B5563;
+      --wire-surface: #FFFFFF;
+      --wire-muted: #F3F4F6;
+      --wire-dim: #E5E7EB;
+      --wire-text: #111827;
+      --wire-subtext: #6B7280;
+      --forest: #1B4332;
+      --sage: #2D6A4F;
+      --sage-light: #EBF7EE;
+      --terracotta: #9C4221;
+      --terracotta-light: #FDF2EE;
+      --amber: #B45309;
+      --amber-light: #FFFBEB;
+      --blue: #2563EB;
+      --blue-light: #EFF6FF;
+      --annotation: #DC2626;
+      --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-ui);
+      background-color: var(--bg);
+      color: var(--wire-text);
+      line-height: 1.5;
+      padding-bottom: 60px;
+    }
+
+    /* Top Control Toolbar */
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: #FFFFFF;
+      border-bottom: 2px solid var(--wire-border);
+      padding: 12px 24px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+    }
+
+    .toolbar-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .toolbar-title h1 {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--wire-text);
+    }
+
+    .toolbar-badge {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      background: var(--wire-dim);
+      padding: 2px 8px;
+      border-radius: 4px;
+      color: var(--wire-border-dark);
+    }
+
+    .toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tool-btn {
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 6px;
+      border: 1px solid var(--wire-border);
+      background: #FFFFFF;
+      color: var(--wire-text);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .tool-btn:hover {
+      background: var(--wire-muted);
+      border-color: var(--wire-border-dark);
+    }
+
+    .tool-btn.active {
+      background: var(--forest);
+      color: #FFFFFF;
+      border-color: var(--forest);
+    }
+
+    .toggle-annotation-btn {
+      background: var(--terracotta-light);
+      border-color: #F87171;
+      color: var(--annotation);
+    }
+
+    .toggle-annotation-btn.active {
+      background: var(--annotation);
+      color: #FFFFFF;
+      border-color: var(--annotation);
+    }
+
+    /* Screen Selector Tabs */
+    .screen-tabs {
+      background: #FFFFFF;
+      border-bottom: 1px solid var(--wire-border);
+      padding: 8px 24px;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+    }
+
+    .tab-btn {
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--wire-subtext);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .tab-btn:hover {
+      background: var(--wire-muted);
+      color: var(--wire-text);
+    }
+
+    .tab-btn.active {
+      background: var(--sage-light);
+      border-color: var(--sage);
+      color: var(--forest);
+    }
+
+    /* Canvas Frame Container */
+    .canvas-container {
+      max-width: 1320px;
+      margin: 24px auto;
+      padding: 0 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .viewport-frame {
+      background: var(--wire-surface);
+      border: 2px solid var(--wire-border-dark);
+      border-radius: 12px;
+      box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+      width: 100%;
+      transition: max-width 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Viewport dimensions */
+    .viewport-frame.desktop { max-width: 1200px; }
+    .viewport-frame.tablet  { max-width: 768px; }
+    .viewport-frame.mobile  { max-width: 390px; }
+
+    /* Frame Header */
+    .frame-browser-bar {
+      background: var(--wire-muted);
+      border-bottom: 1px solid var(--wire-border);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .frame-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .frame-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--wire-border);
+    }
+
+    .frame-url {
+      background: #FFFFFF;
+      border: 1px solid var(--wire-border);
+      border-radius: 4px;
+      padding: 2px 12px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--wire-subtext);
+      flex: 1;
+      max-width: 480px;
+    }
+
+    /* Wireframe Content Elements */
+    .wire-screen {
+      display: none;
+      padding: 24px;
+    }
+
+    .wire-screen.active {
+      display: block;
+    }
+
+    /* Wireframe Annotations */
+    .annotation-marker {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      background: var(--annotation);
+      color: #FFFFFF;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      border-radius: 50%;
+      margin-left: 6px;
+      vertical-align: middle;
+      box-shadow: 0 0 0 2px #FFFFFF;
+      cursor: help;
+    }
+
+    .hide-annotations .annotation-marker {
+      display: none !important;
+    }
+
+    .wire-box {
+      border: 1.5px dashed var(--wire-border-dark);
+      border-radius: 8px;
+      padding: 16px;
+      background: #FFFFFF;
+      position: relative;
+    }
+
+    .wire-box.solid {
+      border-style: solid;
+      border-color: var(--wire-border);
+    }
+
+    .wire-tag {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--wire-subtext);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Grid & Component Layouts */
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 900px) {
+      .grid-3, .grid-2 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Wireframe Elements */
+    .wire-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 6px;
+      border: 1.5px solid var(--wire-border-dark);
+      background: #FFFFFF;
+      cursor: pointer;
+      min-height: 40px;
+    }
+
+    .wire-btn.primary {
+      background: var(--forest);
+      color: #FFFFFF;
+      border-color: var(--forest);
+    }
+
+    .wire-btn.secondary {
+      background: var(--wire-muted);
+      border-color: var(--wire-border);
+      color: var(--wire-text);
+    }
+
+    .wire-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 999px;
+      border: 1px solid var(--wire-border);
+      background: var(--wire-muted);
+    }
+
+    .wire-pill.success {
+      background: var(--sage-light);
+      border-color: var(--sage);
+      color: var(--forest);
+    }
+
+    .wire-pill.closed {
+      background: var(--wire-dim);
+      border-color: var(--wire-border);
+      color: var(--wire-subtext);
+    }
+
+    .wire-radio-card {
+      border: 1.5px solid var(--wire-border);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      min-height: 48px;
+      background: #FFFFFF;
+    }
+
+    .wire-radio-card.selected {
+      border-color: var(--sage);
+      background: var(--sage-light);
+      font-weight: 600;
+    }
+
+    .wire-radio-circle {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      border: 2px solid var(--wire-border-dark);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .wire-radio-card.selected .wire-radio-circle::after {
+      content: '';
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--sage);
+    }
+
+    /* Blueprint Legend Panel */
+    .legend-panel {
+      margin-top: 24px;
+      max-width: 1200px;
+      width: 100%;
+      background: #FFFFFF;
+      border: 1px solid var(--wire-border);
+      border-radius: 10px;
+      padding: 16px 20px;
+    }
+
+    .legend-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--wire-border-dark);
+    }
+
+    /* Print Styles */
+    @media print {
+      .toolbar, .screen-tabs { display: none !important; }
+      .viewport-frame { max-width: 100% !important; border: 1px solid #000; box-shadow: none; }
+      .wire-screen { display: block !important; page-break-after: always; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Controls -->
+  <header class="toolbar">
+    <div class="toolbar-title">
+      <h1>HCI Wireframe Prototype Specifications</h1>
+      <span class="toolbar-badge">WCAG 2.2 AA &bull; 8-pt Grid</span>
+    </div>
+
+    <div class="toolbar-actions">
+      <!-- Viewport toggle -->
+      <button type="button" class="tool-btn active" onclick="setViewport('desktop', this)">Desktop (1200px)</button>
+      <button type="button" class="tool-btn" onclick="setViewport('tablet', this)">Tablet (768px)</button>
+      <button type="button" class="tool-btn" onclick="setViewport('mobile', this)">Mobile (390px)</button>
+      
+      <!-- Annotation Toggle -->
+      <button type="button" id="annotationBtn" class="tool-btn toggle-annotation-btn active" onclick="toggleAnnotations()">
+        Annotations: ON (H1-H10)
+      </button>
+
+      <button type="button" class="tool-btn" onclick="window.print()">Print / PDF</button>
+    </div>
+  </header>
+
+  <!-- Screen Navigation Tabs -->
+  <nav class="screen-tabs" aria-label="Wireframe screens">
+    <button type="button" class="tab-btn active" onclick="showScreen('screen-student-dash', this)">
+      1. Student Dashboard (Core)
+    </button>
+    <button type="button" class="tab-btn" onclick="showScreen('screen-meal-states', this)">
+      2. Meal Panel State Machine
+    </button>
+    <button type="button" class="tab-btn" onclick="showScreen('screen-student-schedule', this)">
+      3. 7-Day Meal Schedule
+    </button>
+    <button type="button" class="tab-btn" onclick="showScreen('screen-student-feedback', this)">
+      4. Menu & Quality Feedback Form
+    </button>
+    <button type="button" class="tab-btn" onclick="showScreen('screen-manager-dash', this)">
+      5. Manager Operations Dashboard
+    </button>
+    <button type="button" class="tab-btn" onclick="showScreen('screen-ai-recommend', this)">
+      6. AI Menu Recommender Modal
+    </button>
+  </nav>
+
+  <!-- Main Canvas -->
+  <main class="canvas-container">
+    <div id="viewportFrame" class="viewport-frame desktop">
+      <!-- Frame Top Browser Bar -->
+      <div class="frame-browser-bar">
+        <div class="frame-dots">
+          <div class="frame-dot"></div>
+          <div class="frame-dot"></div>
+          <div class="frame-dot"></div>
+        </div>
+        <div id="frameUrl" class="frame-url">https://mess.college.edu/student/dashboard</div>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- SCREEN 1: STUDENT DASHBOARD               -->
+      <!-- ========================================== -->
+      <div id="screen-student-dash" class="wire-screen active">
+        <!-- Top Banner -->
+        <div class="wire-box solid" style="margin-bottom: 20px; background: #FAFBF9;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="display:flex; align-items:center;">
+                <h2 style="font-size: 18px; font-weight: 700;">Good morning, Shiva Kumar!</h2>
+                <span class="annotation-marker" title="Heuristic #2: Match real world greetings and name recognition">H2</span>
+              </div>
+              <p style="font-size: 12px; color: var(--wire-subtext); margin-top: 4px;">
+                Today is <strong>Wednesday, 22 October 2026</strong>. You have <strong>1 meal response pending</strong> today.
+                <span class="annotation-marker" title="Heuristic #1: Visibility of System Status (pending count visible)">H1</span>
+              </p>
+            </div>
+            <div>
+              <button class="wire-btn primary">
+                Plan Today's Meals &rarr;
+                <span class="annotation-marker" title="Heuristic #7: Flexibility & Efficiency (1-click anchor shortcut)">H7</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section Title -->
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 12px;">
+          <div>
+            <h3 style="font-size: 15px; font-weight: 700;">Today's Meals & Attendance Intentions</h3>
+            <p style="font-size: 11px; color: var(--wire-subtext);">Answering: "Am I going to eat at the mess for this meal?"</p>
+          </div>
+          <span style="font-size: 12px; font-weight: 600; color: var(--forest); cursor: pointer;">View Full Schedule &rarr;</span>
+        </div>
+
+        <!-- 3 Meal Panels Grid -->
+        <div class="grid-3" style="margin-bottom: 24px;">
+          
+          <!-- Panel 1: Breakfast (Closed) -->
+          <div class="wire-box solid" style="background: #FAFBF9; opacity: 0.9;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 12px;">
+              <div>
+                <span class="wire-tag">Meal 1</span>
+                <h4 style="font-size: 16px; font-weight: 700;">Breakfast</h4>
+                <div style="font-size: 11px; color: var(--wire-subtext);">7:30 AM - 9:30 AM</div>
+              </div>
+              <span class="wire-pill closed">
+                Response Closed
+                <span class="annotation-marker" title="Heuristic #5: Error Prevention (Closed cutoff prevents post-facto submissions)">H5</span>
+              </span>
+            </div>
+
+            <!-- Menu box -->
+            <div class="wire-box" style="margin-bottom: 12px; padding: 10px; background: #FFFFFF;">
+              <span class="wire-tag">Menu: South Indian</span>
+              <p style="font-size: 12px; margin-top: 4px;">Idli, Medu Vada, Sambar, Coconut Chutney, Tea / Milk</p>
+            </div>
+
+            <!-- Closed Notice -->
+            <div style="padding: 10px; background: var(--wire-dim); border-radius: 6px; font-size: 11px; color: var(--wire-border-dark);">
+              <strong>Response Window Closed:</strong> Cutoff passed at 6:30 AM for morning batch preparation.
+              <span class="annotation-marker" title="Heuristic #9: Clear plain-language explanation of closure">H9</span>
+            </div>
+          </div>
+
+          <!-- Panel 2: Lunch (Open & Pending) -->
+          <div class="wire-box solid" style="border-color: var(--sage); box-shadow: 0 4px 12px rgba(45,106,79,0.08);">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 12px;">
+              <div>
+                <span class="wire-tag">Meal 2 (Active)</span>
+                <h4 style="font-size: 16px; font-weight: 700; color: var(--forest);">Lunch</h4>
+                <div style="font-size: 11px; color: var(--wire-subtext);">12:30 PM - 2:30 PM</div>
+                <div style="font-size: 11px; font-weight: 600; color: var(--amber); margin-top: 2px;">
+                  Cutoff: Today at 11:00 AM (45m left)
+                  <span class="annotation-marker" title="Heuristic #1: System status deadline countdown">H1</span>
+                </div>
+              </div>
+              <span class="wire-pill">Response Pending</span>
+            </div>
+
+            <!-- Menu box -->
+            <div class="wire-box" style="margin-bottom: 14px; padding: 10px; background: #FFFFFF;">
+              <span class="wire-tag">Menu: North Indian Special</span>
+              <p style="font-size: 12px; margin-top: 4px; font-weight: 500;">
+                Paneer Butter Masala, Dal Tadka, Jeera Rice, Phulka, Curd, Salad
+              </p>
+            </div>
+
+            <!-- 3 Choice Selection -->
+            <div style="margin-bottom: 12px;">
+              <div style="font-size: 11px; font-weight: 700; margin-bottom: 8px;">Will you attend this meal?</div>
+              
+              <div style="display:flex; flex-direction:column; gap: 8px;">
+                <div class="wire-radio-card selected">
+                  <div class="wire-radio-circle"></div>
+                  <span style="font-size: 12px;">Likely to attend</span>
+                  <span class="annotation-marker" title="Heuristic #4: Consistency & Standards in 3-choice options">H4</span>
+                </div>
+                <div class="wire-radio-card">
+                  <div class="wire-radio-circle"></div>
+                  <span style="font-size: 12px;">Not likely to attend</span>
+                </div>
+                <div class="wire-radio-card">
+                  <div class="wire-radio-circle"></div>
+                  <span style="font-size: 12px;">Unsure yet</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Privacy Note & CTA -->
+            <div style="font-size: 10px; color: var(--wire-subtext); margin-bottom: 10px; display:flex; align-items:center;">
+              <span>(Shield) Voluntary demand estimate, not a booking.</span>
+              <span class="annotation-marker" title="Heuristic #10: Contextual documentation & privacy explanation">H10</span>
+            </div>
+
+            <button class="wire-btn primary" style="width: 100%;">
+              Confirm Response (Save)
+              <span class="annotation-marker" title="Heuristic #1: Submits intention with immediate visual confirmation">H1</span>
+            </button>
+          </div>
+
+          <!-- Panel 3: Dinner (Confirmed Saved) -->
+          <div class="wire-box solid" style="background: #FFFFFF;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 12px;">
+              <div>
+                <span class="wire-tag">Meal 3</span>
+                <h4 style="font-size: 16px; font-weight: 700;">Dinner</h4>
+                <div style="font-size: 11px; color: var(--wire-subtext);">7:30 PM - 9:30 PM</div>
+                <div style="font-size: 11px; color: var(--wire-subtext);">Cutoff: Today at 6:00 PM</div>
+              </div>
+              <span class="wire-pill success">Likely to attend</span>
+            </div>
+
+            <!-- Menu box -->
+            <div class="wire-box" style="margin-bottom: 14px; padding: 10px; background: #FAFBF9;">
+              <span class="wire-tag">Menu: Comfort Meal</span>
+              <p style="font-size: 12px; margin-top: 4px;">Phulka Roti, Dal Fry, Aloo Gobi Matar, Steamed Rice</p>
+            </div>
+
+            <!-- Saved State Display -->
+            <div style="padding: 12px; background: var(--sage-light); border: 1px solid #B7E4C7; border-radius: 8px; margin-bottom: 14px;">
+              <div style="font-size: 11px; color: var(--forest); font-weight: 700;">
+                Registered Intention Confirmed
+                <span class="annotation-marker" title="Heuristic #1: System confirms saved status with timestamp">H1</span>
+              </div>
+              <div style="font-size: 11px; color: var(--sage); margin-top: 2px;">
+                Saved today at 10:45 AM
+              </div>
+            </div>
+
+            <!-- Action buttons: Edit & Withdraw -->
+            <div style="display:flex; gap: 8px;">
+              <button class="wire-btn secondary" style="flex:1;">
+                Change
+                <span class="annotation-marker" title="Heuristic #3: User Control & Freedom (can edit before cutoff)">H3</span>
+              </button>
+              <button class="wire-btn secondary" style="flex:1; color: var(--terracotta);">
+                Withdraw
+                <span class="annotation-marker" title="Heuristic #3: Can withdraw intention prior to cutoff">H3</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Secondary Section: 2 Columns -->
+        <div class="grid-2">
+          <!-- Upcoming 48 Hours -->
+          <div class="wire-box solid">
+            <h4 style="font-size: 13px; font-weight: 700; margin-bottom: 12px;">Upcoming Meals (Next 48 Hours)</h4>
+            
+            <div style="display:flex; flex-direction:column; gap: 10px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; padding: 8px 12px; background: var(--wire-muted); border-radius: 6px; font-size: 12px;">
+                <div>
+                  <strong>Thu, 23 Oct &bull; Breakfast</strong>
+                  <div style="font-size: 11px; color: var(--wire-subtext);">Poha, Sprouts, Boiled Egg</div>
+                </div>
+                <span class="wire-pill success">Likely</span>
+              </div>
+
+              <div style="display:flex; justify-content:space-between; align-items:center; padding: 8px 12px; background: var(--wire-muted); border-radius: 6px; font-size: 12px;">
+                <div>
+                  <strong>Thu, 23 Oct &bull; Lunch</strong>
+                  <div style="font-size: 11px; color: var(--wire-subtext);">Rajma Masala, Steamed Rice, Boondi Raita</div>
+                </div>
+                <span class="wire-pill">Unsure yet</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Announcements & Feedback card -->
+          <div style="display:flex; flex-direction:column; gap: 14px;">
+            <div class="wire-box solid">
+              <h4 style="font-size: 13px; font-weight: 700; margin-bottom: 8px;">Mess Notices</h4>
+              <p style="font-size: 11px; color: var(--wire-subtext); line-height: 1.4;">
+                <strong>Special Diwali Feast:</strong> Special festive menu published for Friday dinner. Please register intentions by Thursday evening.
+              </p>
+            </div>
+
+            <div class="wire-box solid" style="background: var(--sage-light); border-color: #B7E4C7;">
+              <h4 style="font-size: 13px; font-weight: 700; color: var(--forest);">How Was Yesterday's Meal?</h4>
+              <p style="font-size: 11px; color: var(--sage); margin: 4px 0 10px 0;">Help kitchen staff adjust taste and serving portions.</p>
+              <button class="wire-btn primary" style="font-size: 11px; padding: 6px 12px;">Leave Quick Feedback &rarr;</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- SCREEN 2: MEAL PANEL STATE MACHINE        -->
+      <!-- ========================================== -->
+      <div id="screen-meal-states" class="wire-screen">
+        <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 6px;">Meal-Intention Interactive States Blueprint</h3>
+        <p style="font-size: 12px; color: var(--wire-subtext); margin-bottom: 20px;">
+          Progressive disclosure state flow adhering to Nielsen Heuristics #1 (Visibility of Status), #3 (Control & Freedom), #5 (Error Prevention), and #9 (Recovery).
+        </p>
+
+        <div class="grid-3" style="gap: 20px;">
+          
+          <!-- State 1: Unanswered -->
+          <div class="wire-box solid">
+            <span class="wire-tag">State 1: Initial (Unanswered)</span>
+            <h4 style="font-size: 14px; font-weight: 700; margin: 8px 0;">Lunch (12:30 - 2:30 PM)</h4>
+            <div class="wire-pill" style="margin-bottom: 12px;">Response Pending</div>
+            
+            <div class="wire-box" style="margin-bottom: 12px; font-size: 11px;">
+              Menu: Paneer Butter Masala, Dal Tadka, Rice
+            </div>
+
+            <div style="font-size: 11px; font-weight: 600; margin-bottom: 6px;">Will you attend?</div>
+            <div style="display:flex; flex-direction:column; gap: 6px; margin-bottom: 12px;">
+              <div class="wire-radio-card"><div class="wire-radio-circle"></div><span style="font-size: 11px;">Likely to attend</span></div>
+              <div class="wire-radio-card"><div class="wire-radio-circle"></div><span style="font-size: 11px;">Not likely to attend</span></div>
+              <div class="wire-radio-card"><div class="wire-radio-circle"></div><span style="font-size: 11px;">Unsure yet</span></div>
+            </div>
+
+            <button class="wire-btn secondary" style="width:100%; opacity: 0.5;" disabled>
+              Confirm Response (Disabled until selection)
+              <span class="annotation-marker" title="Heuristic #5: Error prevention (cannot submit empty choice)">H5</span>
+            </button>
+          </div>
+
+          <!-- State 2: Selection Active -->
+          <div class="wire-box solid" style="border-color: var(--sage);">
+            <span class="wire-tag" style="color: var(--sage);">State 2: Option Selected</span>
+            <h4 style="font-size: 14px; font-weight: 700; margin: 8px 0;">Lunch (12:30 - 2:30 PM)</h4>
+            <div class="wire-pill" style="margin-bottom: 12px;">Unsaved Selection</div>
+
+            <div class="wire-box" style="margin-bottom: 12px; font-size: 11px;">
+              Menu: Paneer Butter Masala, Dal Tadka, Rice
+            </div>
+
+            <div style="font-size: 11px; font-weight: 600; margin-bottom: 6px;">Will you attend?</div>
+            <div style="display:flex; flex-direction:column; gap: 6px; margin-bottom: 12px;">
+              <div class="wire-radio-card selected">
+                <div class="wire-radio-circle"></div>
+                <span style="font-size: 11px;">Likely to attend</span>
+              </div>
+              <div class="wire-radio-card"><div class="wire-radio-circle"></div><span style="font-size: 11px;">Not likely to attend</span></div>
+              <div class="wire-radio-card"><div class="wire-radio-circle"></div><span style="font-size: 11px;">Unsure yet</span></div>
+            </div>
+
+            <button class="wire-btn primary" style="width:100%;">
+              Confirm Response &rarr;
+              <span class="annotation-marker" title="Heuristic #1: Button actively communicates readiness to submit">H1</span>
+            </button>
+          </div>
+
+          <!-- State 3: Confirmed Saved -->
+          <div class="wire-box solid" style="background: #FAFBF9;">
+            <span class="wire-tag" style="color: var(--forest);">State 3: Confirmed & Timestamped</span>
+            <h4 style="font-size: 14px; font-weight: 700; margin: 8px 0;">Lunch (12:30 - 2:30 PM)</h4>
+            <div class="wire-pill success" style="margin-bottom: 12px;">Likely to attend</div>
+
+            <div class="wire-box" style="margin-bottom: 12px; font-size: 11px;">
+              Menu: Paneer Butter Masala, Dal Tadka, Rice
+            </div>
+
+            <div style="padding: 10px; background: var(--sage-light); border-radius: 6px; margin-bottom: 12px; font-size: 11px;">
+              <strong>Saved:</strong> Today at 10:45 AM.
+              <span class="annotation-marker" title="Heuristic #1: Explicit persistent confirmation">H1</span>
+            </div>
+
+            <div style="display:flex; gap: 6px;">
+              <button class="wire-btn secondary" style="flex:1; font-size: 11px;">
+                Change Choice
+                <span class="annotation-marker" title="Heuristic #3: User freedom to adjust before cutoff">H3</span>
+              </button>
+              <button class="wire-btn secondary" style="flex:1; font-size: 11px; color: var(--terracotta);">
+                Withdraw
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- SCREEN 3: 7-DAY MEAL SCHEDULE              -->
+      <!-- ========================================== -->
+      <div id="screen-student-schedule" class="wire-screen">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
+          <div>
+            <h3 style="font-size: 18px; font-weight: 700;">Meal Schedule & Advance Planning</h3>
+            <p style="font-size: 12px; color: var(--wire-subtext);">Explore menus for the full week and submit intentions in advance.</p>
+          </div>
+          <div style="display:flex; gap: 6px;">
+            <button class="wire-btn secondary" style="background: var(--wire-muted); font-size: 11px;">Day View (Actv)</button>
+            <button class="wire-btn secondary" style="font-size: 11px;">Full Week List</button>
+            <span class="annotation-marker" title="Heuristic #7: Flexibility to switch views">H7</span>
+          </div>
+        </div>
+
+        <!-- 7-Day Tab Navigation Bar -->
+        <div style="display:grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 20px;">
+          <div class="wire-box" style="padding: 8px; text-align:center;">
+            <div style="font-size: 10px; color: var(--wire-subtext);">MON</div>
+            <div style="font-size: 14px; font-weight: 700;">20 Oct</div>
+            <div style="font-size: 10px; color: var(--sage); margin-top: 4px;">&bull; All Set</div>
+          </div>
+
+          <div class="wire-box" style="padding: 8px; text-align:center;">
+            <div style="font-size: 10px; color: var(--wire-subtext);">TUE</div>
+            <div style="font-size: 14px; font-weight: 700;">21 Oct</div>
+            <div style="font-size: 10px; color: var(--sage); margin-top: 4px;">&bull; All Set</div>
+          </div>
+
+          <div class="wire-box solid" style="padding: 8px; text-align:center; border-color: var(--forest); background: var(--sage-light);">
+            <div style="font-size: 10px; font-weight: 700; color: var(--forest);">WED (TODAY)</div>
+            <div style="font-size: 14px; font-weight: 800; color: var(--forest);">22 Oct</div>
+            <div style="font-size: 10px; color: var(--forest); margin-top: 4px;">2/3 Set</div>
+          </div>
+
+          <div class="wire-box" style="padding: 8px; text-align:center;">
+            <div style="font-size: 10px; color: var(--wire-subtext);">THU</div>
+            <div style="font-size: 14px; font-weight: 700;">23 Oct</div>
+            <div style="font-size: 10px; color: var(--amber); margin-top: 4px;">1/3 Set</div>
+          </div>
+
+          <div class="wire-box" style="padding: 8px; text-align:center;">
+            <div style="font-size: 10px; color: var(--wire-subtext);">FRI</div>
+            <div style="font-size: 14px; font-weight: 700;">24 Oct</div>
+            <div style="font-size: 10px; color: var(--wire-subtext); margin-top: 4px;">Pending</div>
+          </div>
+
+          <div class="wire-box" style="padding: 8px; text-align:center;">
+            <div style="font-size: 10px; color: var(--wire-subtext);">SAT</div>
+            <div style="font-size: 14px; font-weight: 700;">25 Oct</div>
+            <div style="font-size: 10px; color: var(--wire-subtext); margin-top: 4px;">Pending</div>
+          </div>
+
+          <div class="wire-box" style="padding: 8px; text-align:center;">
+            <div style="font-size: 10px; color: var(--wire-subtext);">SUN</div>
+            <div style="font-size: 14px; font-weight: 700;">26 Oct</div>
+            <div style="font-size: 10px; color: var(--wire-subtext); margin-top: 4px;">Pending</div>
+          </div>
+        </div>
+
+        <!-- Day Header Bar with prev/next arrows -->
+        <div class="wire-box solid" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
+          <button class="wire-btn secondary" style="font-size: 11px;">&larr; Previous Day</button>
+          <div style="text-align:center;">
+            <h4 style="font-size: 14px; font-weight: 700;">Wednesday, 22 October 2026</h4>
+            <span style="font-size: 11px; color: var(--sage);">Active Day Schedule</span>
+          </div>
+          <button class="wire-btn secondary" style="font-size: 11px;">Next Day &rarr;</button>
+        </div>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- SCREEN 4: MENU & QUALITY FEEDBACK FORM    -->
+      <!-- ========================================== -->
+      <div id="screen-student-feedback" class="wire-screen">
+        <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 4px;">Menu & Quality Feedback</h3>
+        <p style="font-size: 12px; color: var(--wire-subtext); margin-bottom: 20px;">Share anonymous meal ratings to assist kitchen preparation quality.</p>
+
+        <div class="wire-box solid" style="max-width: 680px; margin: 0 auto; padding: 24px;">
+          
+          <!-- Meal Date & Session -->
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px;">
+            <div>
+              <label style="font-size: 11px; font-weight: 700; display:block; margin-bottom: 4px;">Meal Date</label>
+              <div class="wire-box" style="padding: 8px 12px; font-size: 12px;">2026-10-22 [v]</div>
+            </div>
+            <div>
+              <label style="font-size: 11px; font-weight: 700; display:block; margin-bottom: 4px;">Session</label>
+              <div class="wire-box" style="padding: 8px 12px; font-size: 12px;">Lunch [v]</div>
+            </div>
+          </div>
+
+          <!-- Satisfaction Rating -->
+          <div style="margin-bottom: 18px;">
+            <label style="font-size: 12px; font-weight: 700; display:block; margin-bottom: 6px;">
+              Overall Satisfaction (Rating: 4 / 5 - "Very Good")
+              <span class="annotation-marker" title="Heuristic #2: Familiar star rating mental model">H2</span>
+            </label>
+            <div style="display:flex; gap: 8px;">
+              <div class="wire-box solid" style="padding: 8px 14px; font-size: 13px; font-weight:700;">★ 1</div>
+              <div class="wire-box solid" style="padding: 8px 14px; font-size: 13px; font-weight:700;">★ 2</div>
+              <div class="wire-box solid" style="padding: 8px 14px; font-size: 13px; font-weight:700;">★ 3</div>
+              <div class="wire-box solid" style="padding: 8px 14px; font-size: 13px; font-weight:700; background: var(--sage-light); border-color: var(--sage); color: var(--forest);">★ 4 (Selected)</div>
+              <div class="wire-box solid" style="padding: 8px 14px; font-size: 13px; font-weight:700;">★ 5</div>
+            </div>
+          </div>
+
+          <!-- Portion Size -->
+          <div style="margin-bottom: 18px;">
+            <label style="font-size: 12px; font-weight: 700; display:block; margin-bottom: 6px;">Portion Size Evaluation</label>
+            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+              <div class="wire-radio-card"><div class="wire-radio-circle"></div><span style="font-size: 11px;">Too small</span></div>
+              <div class="wire-radio-card selected"><div class="wire-radio-circle"></div><span style="font-size: 11px;">Just right</span></div>
+              <div class="wire-radio-card"><div class="wire-radio-circle"></div><span style="font-size: 11px;">Too large</span></div>
+            </div>
+          </div>
+
+          <!-- Comments -->
+          <div style="margin-bottom: 18px;">
+            <label style="font-size: 12px; font-weight: 700; display:block; margin-bottom: 6px;">Suggestions or Comments (Optional)</label>
+            <div class="wire-box" style="min-height: 80px; font-size: 12px; color: var(--wire-subtext);">
+              Gravy consistency was great today. Please ensure phulkas are served warm.
+            </div>
+            <div style="text-align:right; font-size: 10px; color: var(--wire-subtext); margin-top: 4px;">68 / 500 characters</div>
+          </div>
+
+          <!-- Anonymous toggle -->
+          <div style="display:flex; align-items:center; gap: 8px; margin-bottom: 20px;">
+            <input type="checkbox" checked style="width: 16px; height: 16px;">
+            <span style="font-size: 11px; color: var(--wire-border-dark);">
+              Submit anonymously (Hides roll number & student name from kitchen staff)
+              <span class="annotation-marker" title="Heuristic #10: Explicit privacy protection">H10</span>
+            </span>
+          </div>
+
+          <button class="wire-btn primary" style="width: 100%;">Submit Meal Feedback</button>
+        </div>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- SCREEN 5: MANAGER OPERATIONS DASHBOARD    -->
+      <!-- ========================================== -->
+      <div id="screen-manager-dash" class="wire-screen">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
+          <div>
+            <h3 style="font-size: 18px; font-weight: 700;">Hostel Dining Hall Operations Dashboard</h3>
+            <p style="font-size: 12px; color: var(--wire-subtext);">Aggregated ML Attendance & Food Waste Projections</p>
+          </div>
+          <button class="wire-btn primary" style="background: var(--blue); border-color: var(--blue);">+ New Forecast</button>
+        </div>
+
+        <!-- 4 Stat Cards -->
+        <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;">
+          <div class="wire-box solid">
+            <span class="wire-tag">Saved Forecasts</span>
+            <div style="font-size: 20px; font-weight: 800;">14 records</div>
+            <div style="font-size: 11px; color: var(--wire-subtext);">Active operational db</div>
+          </div>
+          <div class="wire-box solid">
+            <span class="wire-tag">Avg Expected Headcount</span>
+            <div style="font-size: 20px; font-weight: 800;">343 students</div>
+            <div style="font-size: 11px; color: var(--wire-subtext);">~61.7% of total 556 cap</div>
+          </div>
+          <div class="wire-box solid">
+            <span class="wire-tag">Avg Prepared Food</span>
+            <div style="font-size: 20px; font-weight: 800;">135.0 kg</div>
+            <div style="font-size: 11px; color: var(--wire-subtext);">~0.39 kg per student</div>
+          </div>
+          <div class="wire-box solid">
+            <span class="wire-tag">Avg Expected Wastage</span>
+            <div style="font-size: 20px; font-weight: 800; color: var(--terracotta);">6.5 kg (4.8%)</div>
+            <div style="font-size: 11px; color: var(--wire-subtext);">Target bound: &lt; 8%</div>
+          </div>
+        </div>
+
+        <!-- Chart Placeholder -->
+        <div class="wire-box solid" style="min-height: 200px; display:flex; flex-direction:column; justify-content:center; align-items:center; background: #FAFBF9; margin-bottom: 16px;">
+          <div style="font-weight: 700; font-size: 13px;">Historical Attendance & Wastage Trends Curve</div>
+          <div style="font-size: 11px; color: var(--wire-subtext); margin-top: 4px;">[ Recharts Responsive Container with Multi-Modal Accessible Data Table ]</div>
+          <span class="annotation-marker" title="WCAG 1.1.1: Chart paired with accessible tabular breakdown">H8</span>
+        </div>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- SCREEN 6: AI MENU RECOMMENDER MODAL       -->
+      <!-- ========================================== -->
+      <div id="screen-ai-recommend" class="wire-screen">
+        <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 4px;">Prescriptive AI Menu Recommendation Blueprint</h3>
+        <p style="font-size: 12px; color: var(--wire-subtext); margin-bottom: 20px;">
+          Human-in-the-Loop decision support triggering alternative candidate dish evaluation when projected turnout is sub-optimal.
+        </p>
+
+        <!-- Modal Wireframe Box -->
+        <div class="wire-box solid" style="max-width: 720px; margin: 0 auto; box-shadow: 0 12px 28px rgba(0,0,0,0.12);">
+          
+          <div style="display:flex; justify-content:space-between; align-items:center; padding-bottom: 12px; border-bottom: 1px solid var(--wire-border);">
+            <div>
+              <span class="wire-tag" style="color: var(--blue);">Prescriptive AI Assistant</span>
+              <h4 style="font-size: 15px; font-weight: 800;">Recommended Menu Changes for Friday Lunch</h4>
+            </div>
+            <button class="wire-btn secondary" style="padding: 4px 8px; font-size: 11px;">Close &times;</button>
+          </div>
+
+          <div style="margin: 16px 0; padding: 10px 14px; background: var(--amber-light); border: 1px solid #FDE68A; border-radius: 6px; font-size: 11px; color: var(--amber);">
+            <strong>Warning: Current Menu (Khichdi & Kadhi)</strong> projects only <strong>235 students</strong> with <strong>18.5 kg wastage</strong>.
+            The model suggests the following substitutions based on historical preference embeddings:
+          </div>
+
+          <!-- Recommendation 1 -->
+          <div class="wire-box solid" style="margin-bottom: 14px; border-left: 4px solid var(--forest);">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <h5 style="font-size: 13px; font-weight: 700;">1. Paneer Butter Masala, Jeera Rice & Phulka</h5>
+              <span class="wire-pill success">+135 Students</span>
+            </div>
+            <p style="font-size: 11px; color: var(--wire-subtext); margin: 6px 0;">
+              <strong>Projected Impact:</strong> Attendance rises to <strong>370 students</strong>; Wastage drops by <strong>11.2 kg</strong> (5.1% total).
+            </p>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 8px;">
+              <span style="font-size: 10px; color: var(--wire-subtext);">Rationale: High affinity Friday staple. Minimizes leftover volume.</span>
+              <button class="wire-btn primary" style="font-size: 11px; padding: 6px 12px;">
+                Apply Dish & Re-Forecast &rarr;
+                <span class="annotation-marker" title="Shneiderman Rule #7: Internal Locus of Control (Human supervisor decides)">S7</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Recommendation 2 -->
+          <div class="wire-box solid" style="border-left: 4px solid var(--blue);">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <h5 style="font-size: 13px; font-weight: 700;">2. Rajma Chawal & Boondi Raita</h5>
+              <span class="wire-pill success">+95 Students</span>
+            </div>
+            <p style="font-size: 11px; color: var(--wire-subtext); margin: 6px 0;">
+              <strong>Projected Impact:</strong> Attendance rises to <strong>330 students</strong>; Wastage drops by <strong>7.8 kg</strong> (7.6% total).
+            </p>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 8px;">
+              <span style="font-size: 10px; color: var(--wire-subtext);">Rationale: High consumption consistency with lower preparation cost.</span>
+              <button class="wire-btn primary" style="background: var(--blue); border-color: var(--blue); font-size: 11px; padding: 6px 12px;">
+                Apply Dish & Re-Forecast &rarr;
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Nielsen Heuristics Legend -->
+    <section class="legend-panel">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h4 style="font-size: 13px; font-weight: 700;">Nielsen's 10 Usability Heuristics Key (H1 - H10)</h4>
+        <span style="font-size: 11px; font-family: var(--font-mono); color: var(--wire-subtext);">HCI Design Reference</span>
+      </div>
+
+      <div class="legend-grid">
+        <div class="legend-item"><span class="annotation-marker">H1</span> <span><strong>Visibility of Status:</strong> Cutdown timers, confirmed timestamps.</span></div>
+        <div class="legend-item"><span class="annotation-marker">H2</span> <span><strong>Match Real World:</strong> Breakfast, Lunch, Dinner, familiar star ratings.</span></div>
+        <div class="legend-item"><span class="annotation-marker">H3</span> <span><strong>Control & Freedom:</strong> Edit and withdraw before deadline.</span></div>
+        <div class="legend-item"><span class="annotation-marker">H4</span> <span><strong>Consistency:</strong> Uniform 3-choice radio interaction across app.</span></div>
+        <div class="legend-item"><span class="annotation-marker">H5</span> <span><strong>Error Prevention:</strong> Strict automatic cutoff locks.</span></div>
+        <div class="legend-item"><span class="annotation-marker">H6</span> <span><strong>Recognition > Recall:</strong> Menus and choices visible simultaneously.</span></div>
+        <div class="legend-item"><span class="annotation-marker">H7</span> <span><strong>Flexibility & Efficiency:</strong> 1-click submit and 7-day tab bars.</span></div>
+        <div class="legend-item"><span class="annotation-marker">H8</span> <span><strong>Aesthetic & Minimalist:</strong> No fake gamification or chart clutter.</span></div>
+        <div class="legend-item"><span class="annotation-marker">H9</span> <span><strong>Error Recovery:</strong> Polite plain-language error explanations.</span></div>
+        <div class="legend-item"><span class="annotation-marker">H10</span> <span><strong>Help & Privacy:</strong> Contextual voluntary intention notes.</span></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    function setViewport(size, btn) {
+      document.querySelectorAll('.tool-btn').forEach(b => {
+        if (b.innerText.toLowerCase().includes('desktop') || 
+            b.innerText.toLowerCase().includes('tablet') || 
+            b.innerText.toLowerCase().includes('mobile')) {
+          b.classList.remove('active');
+        }
+      });
+      btn.classList.add('active');
+      const frame = document.getElementById('viewportFrame');
+      frame.className = 'viewport-frame ' + size;
+    }
+
+    function showScreen(screenId, tabBtn) {
+      document.querySelectorAll('.wire-screen').forEach(s => s.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById(screenId).classList.add('active');
+      tabBtn.classList.add('active');
+
+      const urlMap = {
+        'screen-student-dash': 'https://mess.college.edu/student/dashboard',
+        'screen-meal-states': 'https://mess.college.edu/student/dashboard#interaction-states',
+        'screen-student-schedule': 'https://mess.college.edu/student/schedule',
+        'screen-student-feedback': 'https://mess.college.edu/student/feedback',
+        'screen-manager-dash': 'https://mess.college.edu/dashboard',
+        'screen-ai-recommend': 'https://mess.college.edu/predictions/new#recommender-modal'
+      };
+      document.getElementById('frameUrl').innerText = urlMap[screenId] || 'https://mess.college.edu';
+    }
+
+    function toggleAnnotations() {
+      const btn = document.getElementById('annotationBtn');
+      const body = document.body;
+      if (body.classList.contains('hide-annotations')) {
+        body.classList.remove('hide-annotations');
+        btn.classList.add('active');
+        btn.innerText = 'Annotations: ON (H1-H10)';
+      } else {
+        body.classList.add('hide-annotations');
+        btn.classList.remove('active');
+        btn.innerText = 'Annotations: OFF';
+      }
+    }
+  </script>
+</body>
+</html>

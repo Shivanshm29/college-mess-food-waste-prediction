@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    @apply bg-[#FFFFFF] text-[#1E293B] antialiased min-h-screen font-sans;
+    margin: 0;
+  }
+
+  /* Accessible focus indicators for keyboard navigation (WCAG 2.2 AA) */
+  :focus-visible {
+    @apply outline-none ring-2 ring-[#2563EB] ring-offset-2 ring-offset-white;
+  }
+
+  /* Ensure headings have semantic weight and proper contrast */
+  h1, h2, h3, h4, h5, h6 {
+    @apply text-[#1E293B] font-semibold tracking-tight;
+  }
+}
+
+/* Reduced motion preference support (WCAG 2.2 AA) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Accessible screen-reader only class */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F8FAFC;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}

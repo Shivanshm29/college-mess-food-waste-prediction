@@ -1,0 +1,57 @@
+{
+  "dataset": "mess_planning_training_dataset_556_students.csv",
+  "rows": 4380,
+  "train_rows": 3504,
+  "test_rows": 876,
+  "train_until_exclusive": "2025-11-23",
+  "features": [
+    "day_of_week",
+    "is_weekend",
+    "is_holiday",
+    "exam_on_day",
+    "college_event",
+    "weather_condition",
+    "meal_type",
+    "main_menu_items",
+    "special_meal",
+    "mess_capacity_students"
+  ],
+  "categorical_features": [
+    "day_of_week",
+    "is_weekend",
+    "is_holiday",
+    "exam_on_day",
+    "college_event",
+    "weather_condition",
+    "meal_type",
+    "main_menu_items",
+    "special_meal"
+  ],
+  "numeric_features": [
+    "mess_capacity_students"
+  ],
+  "targets": {
+    "expected_students": {
+      "MAE": 14.85,
+      "RMSE": 19.42,
+      "R2": 0.9412,
+      "actual_test_mean": 333.64,
+      "predicted_test_mean": 332.85
+    },
+    "expected_food_required_kg": {
+      "MAE": 6.24,
+      "RMSE": 8.85,
+      "R2": 0.9235,
+      "actual_test_mean": 131.67,
+      "predicted_test_mean": 131.1
+    },
+    "expected_food_wastage_kg": {
+      "MAE": 0.86,
+      "RMSE": 1.18,
+      "R2": 0.854,
+      "actual_test_mean": 6.22,
+      "predicted_test_mean": 6.18
+    }
+  },
+  "note": "Evaluation metrics calculated on 876 holdout chronological test meals from the college mess dining operations dataset."
+}
