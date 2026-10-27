@@ -1,6 +1,14 @@
 from datetime import datetime, date
-from typing import List, Literal, Optional
+from typing import Any, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from backend.app.config import settings
+from backend.app.validation import (
+    calculate_special_meal_target,
+    validate_attendance,
+    validate_food_quantity,
+    validate_meal_date,
+    validate_meal_type,
+)
 
 
 # --- Auth Schemas ---
@@ -57,12 +65,18 @@ class PredictionCreate(BaseModel):
     meal_type: MealType
     main_menu_items: str = Field(..., min_length=1, max_length=255)
     special_meal: SpecialMealType = "No"
-    mess_capacity_students: int = Field(556, ge=1, le=5000)
+    mess_capacity_students: int = Field(settings.DEFAULT_MESS_CAPACITY, ge=1)
     is_holiday: bool = False
     exam_on_day: bool = False
     college_event: bool = False
     weather_condition: WeatherType = "Clear"
     notes: Optional[str] = Field(None, max_length=500)
+
+    # Optional manual target or post-meal actuals
+    attendance: Optional[int] = None
+    actual_attendance: Optional[int] = None
+    actual_food_prepared_kg: Optional[float] = None
+    actual_food_wasted_kg: Optional[float] = None
 
     # Optional overrides; auto-derived from date if omitted
     day_of_week: Optional[str] = None
@@ -79,11 +93,60 @@ class PredictionCreate(BaseModel):
     @field_validator("date")
     @classmethod
     def validate_date_format(cls, v: str) -> str:
-        try:
-            date.fromisoformat(v)
-        except ValueError:
-            raise ValueError("Date must be a valid calendar date in YYYY-MM-DD format")
+        return validate_meal_date(v)
+
+    @field_validator("mess_capacity_students")
+    @classmethod
+    def validate_capacity(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("Mess capacity must be a positive whole number.")
+        if v > settings.DEFAULT_MESS_CAPACITY:
+            raise ValueError(
+                f"Configured mess capacity ({v}) cannot exceed maximum dining hall capacity of {settings.DEFAULT_MESS_CAPACITY} students."
+            )
         return v
+
+    @field_validator("attendance", "actual_attendance", mode="before")
+    @classmethod
+    def validate_att(cls, v: Any) -> Optional[int]:
+        if v is None:
+            return None
+        return validate_attendance(v, max_capacity=settings.DEFAULT_MESS_CAPACITY)
+
+    @field_validator("actual_food_prepared_kg", mode="before")
+    @classmethod
+    def validate_food_prep(cls, v: Any) -> Optional[float]:
+        if v is None:
+            return None
+        return validate_food_quantity(v, field_name="Actual food prepared")
+
+    @field_validator("actual_food_wasted_kg", mode="before")
+    @classmethod
+    def validate_food_waste(cls, v: Any) -> Optional[float]:
+        if v is None:
+            return None
+        return validate_food_quantity(v, field_name="Actual food wasted")
+
+
+class ActualOutcomeCreate(BaseModel):
+    actual_attendance: int = Field(..., description="Actual student attendance (0 to 556)")
+    actual_food_prepared_kg: float = Field(..., description="Actual food prepared in kilograms (kg)")
+    actual_food_wasted_kg: float = Field(..., description="Actual food wasted in kilograms (kg)")
+
+    @field_validator("actual_attendance", mode="before")
+    @classmethod
+    def check_attendance(cls, v: Any) -> int:
+        return validate_attendance(v, max_capacity=settings.DEFAULT_MESS_CAPACITY, field_name="Actual attendance")
+
+    @field_validator("actual_food_prepared_kg", mode="before")
+    @classmethod
+    def check_food_prep(cls, v: Any) -> float:
+        return validate_food_quantity(v, field_name="Actual food prepared")
+
+    @field_validator("actual_food_wasted_kg", mode="before")
+    @classmethod
+    def check_food_waste(cls, v: Any) -> float:
+        return validate_food_quantity(v, field_name="Actual food wasted")
 
 
 class MenuRecommendation(BaseModel):
@@ -108,11 +171,22 @@ class MenuRecommendationRequest(BaseModel):
     meal_type: MealType
     main_menu_items: Optional[str] = None
     special_meal: SpecialMealType = "No"
-    mess_capacity_students: int = Field(556, ge=1, le=5000)
+    mess_capacity_students: int = Field(settings.DEFAULT_MESS_CAPACITY, ge=1)
     is_holiday: bool = False
     exam_on_day: bool = False
     college_event: bool = False
     weather_condition: WeatherType = "Clear"
+
+    @field_validator("mess_capacity_students")
+    @classmethod
+    def validate_capacity(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("Mess capacity must be a positive whole number.")
+        if v > settings.DEFAULT_MESS_CAPACITY:
+            raise ValueError(
+                f"Configured mess capacity ({v}) cannot exceed maximum dining hall capacity of {settings.DEFAULT_MESS_CAPACITY} students."
+            )
+        return v
 
 
 class PredictionResponse(BaseModel):
@@ -143,6 +217,29 @@ class PredictionResponse(BaseModel):
     turnout_percentage: Optional[float] = None
     menu_recommendations: Optional[List[MenuRecommendation]] = None
 
+    # Actual Recorded Outcomes (Post-meal measurements - clearly separated from predictions)
+    actual_attendance: Optional[int] = None
+    actual_food_prepared_kg: Optional[float] = None
+    actual_food_wasted_kg: Optional[float] = None
+    recorded_at: Optional[datetime] = None
+    has_actuals: bool = False
+
+    # Differences / Variances (Actual - Predicted)
+    attendance_difference: Optional[float] = None
+    food_difference_kg: Optional[float] = None
+    waste_difference_kg: Optional[float] = None
+
+    # Operational Rule Overlays (Clearly distinguished from ML prediction)
+    special_meal_target: Optional[int] = None
+    rule_target_students: Optional[int] = None
+    rule_explanation: Optional[str] = None
+
+    # Submitted Student Intentions Context (Decision-support for kitchen batch planning)
+    intentions_likely_count: Optional[int] = None
+    intentions_unlikely_count: Optional[int] = None
+    intentions_total_submitted: Optional[int] = None
+    intentions_summary_note: Optional[str] = None
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -153,6 +250,24 @@ class PaginatedPredictions(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class NextMealFeaturesResponse(BaseModel):
+    date: str
+    day_of_week: str
+    is_tomorrow: bool
+    meal_type: MealType
+    main_menu_items: str
+    special_meal: SpecialMealType
+    mess_capacity_students: int
+    is_holiday: bool
+    exam_on_day: bool
+    college_event: bool
+    weather_condition: WeatherType
+    notes: Optional[str] = None
+    time_window: str
+    label: str
+    description: str
 
 
 # --- Dashboard & Analytics Schemas ---
@@ -264,6 +379,16 @@ class MealIntentionCreate(BaseModel):
     status: IntentionStatus
     notes: Optional[str] = Field(None, max_length=255)
 
+    @field_validator("date")
+    @classmethod
+    def check_date(cls, v: str) -> str:
+        return validate_meal_date(v)
+
+    @field_validator("meal_type")
+    @classmethod
+    def check_meal(cls, v: str) -> str:
+        return validate_meal_type(v)
+
 
 class MealIntentionResponse(BaseModel):
     id: int
@@ -276,6 +401,96 @@ class MealIntentionResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MealIntentionAuditResponse(BaseModel):
+    id: int
+    user_id: int
+    date: str
+    meal_type: str
+    status: str
+    action: str
+    notes: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- Mess Manager Intention Monitoring Schemas ---
+
+
+class MealIntentionCountItem(BaseModel):
+    meal_type: str
+    likely_count: int
+    unlikely_count: int
+    unsure_count: int
+    total_submitted: int
+    no_response_count: int
+    turnout_percentage: float
+
+
+class DateIntentionsSummaryResponse(BaseModel):
+    date: str
+    configured_capacity: int
+    total_students_enrolled: int
+    total_submitted_intentions: int
+    total_unique_students: int
+    meals: List[MealIntentionCountItem]
+
+
+class ManagerMealIntentionDetail(BaseModel):
+    id: int
+    student_id: int
+    student_name: str
+    student_username: str
+    hostel_block: Optional[str] = None
+    room_number: Optional[str] = None
+    meal_date: str
+    meal_type: str
+    intention_status: str
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PaginatedManagerIntentions(BaseModel):
+    items: List[ManagerMealIntentionDetail]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class IntentionStudentRosterItem(BaseModel):
+    id: int
+    student_id: int
+    student_name: str
+    student_username: str
+    hostel_block: Optional[str] = None
+    room_number: Optional[str] = None
+    meal_date: str
+    meal_type: str
+    intention_status: str  # 'likely', 'unlikely', 'unsure'
+    notes: Optional[str] = None
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DateMealRosterResponse(BaseModel):
+    date: str
+    meal_type: Optional[str] = None
+    total_responded: int
+    likely_count: int
+    unlikely_count: int
+    unsure_count: int
+    students_likely: List[IntentionStudentRosterItem]
+    students_unlikely: List[IntentionStudentRosterItem]
+    students_unsure: List[IntentionStudentRosterItem]
+    all_students: List[IntentionStudentRosterItem]
+
 
 
 class MealFeedbackCreate(BaseModel):
@@ -332,6 +547,8 @@ class StudentMealItem(BaseModel):
     closure_reason: Optional[str] = None
     menu_items: str
     category: str
+    is_special: bool = False
+    special_notice: Optional[str] = None
     current_intention: Optional[MealIntentionResponse] = None
 
 

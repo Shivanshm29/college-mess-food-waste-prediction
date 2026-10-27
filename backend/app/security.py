@@ -105,3 +105,23 @@ def get_current_user(
         )
 
     return user
+
+
+def require_manager_or_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Dependency that restricts access to manager, admin, or staff roles."""
+    if current_user.role not in ("manager", "admin", "staff"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access forbidden: Manager privileges required for this operation.",
+        )
+    return current_user
+
+
+def require_student(current_user: User = Depends(get_current_user)) -> User:
+    """Dependency that restricts access to student role or administrative override."""
+    if current_user.role != "student" and current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access forbidden: Student privileges required for this operation.",
+        )
+    return current_user

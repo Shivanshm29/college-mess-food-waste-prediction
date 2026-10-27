@@ -213,3 +213,174 @@ def test_get_prediction_recommendations_by_id(client, auth_headers):
     recs = rec_resp.json()
     assert isinstance(recs, list)
 
+
+def test_student_forbidden_from_manager_endpoints(client, student_auth_headers, auth_headers):
+    """
+    Shneiderman Golden Rule 5 (Prevent Errors) & Access Control:
+    Students must NEVER be permitted to access manager operations.
+    Backend must return HTTP 403 Forbidden.
+    """
+    # 1. Student cannot generate or save predictions
+    resp_create = client.post("/api/predictions", headers=student_auth_headers, json=SAMPLE_PREDICTION_PAYLOAD)
+    assert resp_create.status_code == status.HTTP_403_FORBIDDEN
+
+    # Manager creates a prediction
+    res_mgr = client.post("/api/predictions", headers=auth_headers, json=SAMPLE_PREDICTION_PAYLOAD)
+    assert res_mgr.status_code == status.HTTP_201_CREATED
+    pred_id = res_mgr.json()["id"]
+
+    # 2. Student cannot delete predictions
+    resp_del = client.delete(f"/api/predictions/{pred_id}", headers=student_auth_headers)
+    assert resp_del.status_code == status.HTTP_403_FORBIDDEN
+
+    # 3. Student cannot record actual outcomes
+    actuals_payload = {
+        "actual_attendance": 340,
+        "actual_food_prepared_kg": 135.0,
+        "actual_food_wasted_kg": 6.5,
+    }
+    resp_actuals = client.post(f"/api/predictions/{pred_id}/actuals", headers=student_auth_headers, json=actuals_payload)
+    assert resp_actuals.status_code == status.HTTP_403_FORBIDDEN
+
+    # 4. Student cannot view manager dashboard stats or analytics
+    assert client.get("/api/dashboard/summary", headers=student_auth_headers).status_code == status.HTTP_403_FORBIDDEN
+    assert client.get("/api/analytics/summary", headers=student_auth_headers).status_code == status.HTTP_403_FORBIDDEN
+
+
+def test_capacity_validation_bounds(client, auth_headers):
+    """Capacity must not exceed 556 or be negative."""
+    # Capacity over 556
+    over_payload = dict(SAMPLE_PREDICTION_PAYLOAD)
+    over_payload["mess_capacity_students"] = 600
+    res_over = client.post("/api/predictions", headers=auth_headers, json=over_payload)
+    assert res_over.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    # Negative capacity
+    neg_payload = dict(SAMPLE_PREDICTION_PAYLOAD)
+    neg_payload["mess_capacity_students"] = -10
+    res_neg = client.post("/api/predictions", headers=auth_headers, json=neg_payload)
+    assert res_neg.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+def test_special_meal_rule_overlay(client, auth_headers):
+    """
+    Special-meal rule:
+    - Expected attendance target should be at least 94% of capacity, rounded up (523 for 556).
+    - Response clearly distinguishes rule target from ML expected students.
+    """
+    special_payload = dict(SAMPLE_PREDICTION_PAYLOAD)
+    special_payload["date"] = "2026-10-24"
+    special_payload["special_meal"] = "Yes"
+    special_payload["main_menu_items"] = "Special"
+
+    res = client.post("/api/predictions", headers=auth_headers, json=special_payload)
+    assert res.status_code == status.HTTP_201_CREATED
+    data = res.json()
+
+    assert data["special_meal"] == "Yes"
+    assert data["special_meal_target"] == 523
+    assert data["rule_target_students"] == 523
+    assert "94% of mess capacity" in data["rule_explanation"]
+
+
+def test_actual_outcome_recording_and_variances(client, auth_headers):
+    """
+    Golden Rule 1 & 7:
+    Manager can record actual post-meal metrics (attendance, food prepared, food wasted)
+    and inspect exact differences between actual results and model forecast.
+    """
+    # 1. Create prediction
+    res_create = client.post("/api/predictions", headers=auth_headers, json=SAMPLE_PREDICTION_PAYLOAD)
+    assert res_create.status_code == status.HTTP_201_CREATED
+    pred = res_create.json()
+    pred_id = pred["id"]
+    exp_students = pred["expected_students"]
+    exp_food = pred["expected_food_required_kg"]
+    exp_waste = pred["expected_food_wastage_kg"]
+
+    # Initial state: actuals are None
+    assert pred["actual_attendance"] is None
+    assert pred["attendance_difference"] is None
+
+    # 2. Record actuals
+    actuals_payload = {
+        "actual_attendance": 350,
+        "actual_food_prepared_kg": 135.5,
+        "actual_food_wasted_kg": 7.2,
+    }
+    res_act = client.post(f"/api/predictions/{pred_id}/actuals", headers=auth_headers, json=actuals_payload)
+    assert res_act.status_code == status.HTTP_200_OK
+    act_data = res_act.json()
+
+    assert act_data["actual_attendance"] == 350
+    assert act_data["actual_food_prepared_kg"] == 135.5
+    assert act_data["actual_food_wasted_kg"] == 7.2
+    assert act_data["recorded_at"] is not None
+
+    # Verify differences: actual - expected
+    assert act_data["attendance_difference"] == round(350 - exp_students, 2)
+    assert act_data["food_difference_kg"] == round(135.5 - exp_food, 2)
+    assert act_data["waste_difference_kg"] == round(7.2 - exp_waste, 2)
+
+
+def test_actual_outcome_validation_rejects_invalid(client, auth_headers):
+    """Actual outcome inputs must reject negative values and attendance over 556 without clamping."""
+    res_create = client.post("/api/predictions", headers=auth_headers, json=SAMPLE_PREDICTION_PAYLOAD)
+    assert res_create.status_code == status.HTTP_201_CREATED
+    pred_id = res_create.json()["id"]
+
+    # Negative attendance
+    res_neg = client.post(
+        f"/api/predictions/{pred_id}/actuals",
+        headers=auth_headers,
+        json={"actual_attendance": -5, "actual_food_prepared_kg": 100.0, "actual_food_wasted_kg": 5.0},
+    )
+    assert res_neg.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    # Attendance > 556
+    res_over = client.post(
+        f"/api/predictions/{pred_id}/actuals",
+        headers=auth_headers,
+        json={"actual_attendance": 600, "actual_food_prepared_kg": 100.0, "actual_food_wasted_kg": 5.0},
+    )
+    assert res_over.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    # Negative food prepared
+    res_neg_food = client.post(
+        f"/api/predictions/{pred_id}/actuals",
+        headers=auth_headers,
+        json={"actual_attendance": 300, "actual_food_prepared_kg": -20.0, "actual_food_wasted_kg": 5.0},
+    )
+    assert res_neg_food.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+def test_actual_outcome_ownership_enforcement(client, auth_headers, other_auth_headers):
+    """A manager cannot record actuals on another manager's prediction."""
+    res_create = client.post("/api/predictions", headers=auth_headers, json=SAMPLE_PREDICTION_PAYLOAD)
+    pred_id = res_create.json()["id"]
+
+    actuals_payload = {"actual_attendance": 320, "actual_food_prepared_kg": 120.0, "actual_food_wasted_kg": 4.0}
+    res_other = client.post(f"/api/predictions/{pred_id}/actuals", headers=other_auth_headers, json=actuals_payload)
+    assert res_other.status_code == status.HTTP_403_FORBIDDEN
+
+
+def test_next_available_meal_shortcut(client, auth_headers):
+    """
+    Shneiderman Rule 7 (Shortcuts):
+    Manager can retrieve pre-filled features for the next available upcoming meal slot.
+    """
+    res = client.get("/api/predictions/next-meal", headers=auth_headers)
+    assert res.status_code == status.HTTP_200_OK
+    data = res.json()
+
+    assert "date" in data
+    assert "meal_type" in data
+    assert data["meal_type"] in ("Breakfast", "Lunch", "Snacks", "Dinner")
+    assert "main_menu_items" in data
+    assert len(data["main_menu_items"]) > 0
+    assert data["mess_capacity_students"] == 556
+    assert data["weather_condition"] in ("Clear", "Cloudy", "Hot", "Humid", "Rainy")
+    assert "label" in data
+    assert "time_window" in data
+
+

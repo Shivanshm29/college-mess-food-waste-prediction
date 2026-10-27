@@ -6,7 +6,7 @@ from sqlalchemy import text
 from backend.app.config import settings
 from backend.app.database import Base, engine
 from backend.app.ml_service import ml_service
-from backend.app.routers import analytics, auth, dashboard, model_info, predictions, student
+from backend.app.routers import analytics, auth, dashboard, intentions, model_info, predictions, student
 from backend.app.schemas import HealthResponse
 
 
@@ -14,17 +14,37 @@ def ensure_sqlite_columns():
     """Safely add new columns to SQLite tables if they do not exist."""
     try:
         with engine.begin() as conn:
+            # Users table
             result = conn.execute(text("PRAGMA table_info(users)"))
-            cols = {row[1] for row in result.fetchall()}
-            if cols:
-                if "hostel_block" not in cols:
+            user_cols = {row[1] for row in result.fetchall()}
+            if user_cols:
+                if "hostel_block" not in user_cols:
                     conn.execute(text("ALTER TABLE users ADD COLUMN hostel_block VARCHAR(50) DEFAULT 'Block A'"))
-                if "room_number" not in cols:
+                if "room_number" not in user_cols:
                     conn.execute(text("ALTER TABLE users ADD COLUMN room_number VARCHAR(20)"))
-                if "dietary_preference" not in cols:
+                if "dietary_preference" not in user_cols:
                     conn.execute(text("ALTER TABLE users ADD COLUMN dietary_preference VARCHAR(30) DEFAULT 'Vegetarian'"))
-                if "reminder_cutoff_hours" not in cols:
+                if "reminder_cutoff_hours" not in user_cols:
                     conn.execute(text("ALTER TABLE users ADD COLUMN reminder_cutoff_hours INTEGER DEFAULT 2"))
+
+            # Predictions table (Actual measurements)
+            pred_result = conn.execute(text("PRAGMA table_info(predictions)"))
+            pred_cols = {row[1] for row in pred_result.fetchall()}
+            if pred_cols:
+                if "actual_attendance" not in pred_cols:
+                    conn.execute(text("ALTER TABLE predictions ADD COLUMN actual_attendance INTEGER"))
+                if "actual_food_prepared_kg" not in pred_cols:
+                    conn.execute(text("ALTER TABLE predictions ADD COLUMN actual_food_prepared_kg FLOAT"))
+                if "actual_food_wasted_kg" not in pred_cols:
+                    conn.execute(text("ALTER TABLE predictions ADD COLUMN actual_food_wasted_kg FLOAT"))
+                if "recorded_at" not in pred_cols:
+                    conn.execute(text("ALTER TABLE predictions ADD COLUMN recorded_at DATETIME"))
+
+            # Meal intentions table check
+            mi_result = conn.execute(text("PRAGMA table_info(meal_intentions)"))
+            mi_cols = {row[1] for row in mi_result.fetchall()}
+            if mi_cols and "notes" not in mi_cols:
+                conn.execute(text("ALTER TABLE meal_intentions ADD COLUMN notes VARCHAR(255)"))
     except Exception as e:
         print(f"[Database] Column migration notice: {e}")
 
@@ -87,6 +107,7 @@ app.include_router(dashboard.router, prefix=settings.API_V1_STR)
 app.include_router(analytics.router, prefix=settings.API_V1_STR)
 app.include_router(model_info.router, prefix=settings.API_V1_STR)
 app.include_router(student.router, prefix=settings.API_V1_STR)
+app.include_router(intentions.router, prefix=settings.API_V1_STR)
 
 
 

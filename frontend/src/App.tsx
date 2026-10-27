@@ -10,6 +10,7 @@ import { PredictionHistory } from './pages/PredictionHistory';
 import { Analytics } from './pages/Analytics';
 import { ModelInfo } from './pages/ModelInfo';
 import { Profile } from './pages/Profile';
+import { ManagerIntentions } from './pages/ManagerIntentions';
 
 // Student Portal Components & Pages
 import { StudentLayout } from './components/student/StudentLayout';
@@ -147,6 +148,7 @@ export const App: React.FC = () => {
             }
           >
             <Route path="dashboard" element={<Dashboard />} />
+            <Route path="intentions" element={<ManagerIntentions />} />
             <Route path="predictions/new" element={<NewPrediction />} />
             <Route path="predictions/history" element={<PredictionHistory />} />
             <Route path="analytics" element={<Analytics />} />

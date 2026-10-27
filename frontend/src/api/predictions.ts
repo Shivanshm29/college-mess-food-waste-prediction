@@ -2,6 +2,7 @@ import { apiClient } from './client';
 import {
   MenuRecommendation,
   MenuRecommendationRequest,
+  NextAvailableMealFeatures,
   PaginatedPredictions,
   PredictionInput,
   PredictionRecord,
@@ -45,5 +46,13 @@ export const predictionsApi = {
 
   getRecommendationsForId: (id: number) =>
     apiClient<MenuRecommendation[]>(`/predictions/${id}/recommendations`),
+
+  recordActuals: (id: number, payload: { actual_attendance: number; actual_food_prepared_kg: number; actual_food_wasted_kg: number }) =>
+    apiClient<PredictionRecord>(`/predictions/${id}/actuals`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  getNextMealFeatures: () => apiClient<NextAvailableMealFeatures>('/predictions/next-meal'),
 };
 

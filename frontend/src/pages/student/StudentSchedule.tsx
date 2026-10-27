@@ -56,6 +56,8 @@ export const StudentSchedule: React.FC = () => {
   const handleSaveIntention = async (mealType: string, choice: IntentionChoice) => {
     if (!scheduleData || !scheduleData.days[selectedDayIndex]) return;
     const currentDay = scheduleData.days[selectedDayIndex];
+    const mealItem = currentDay.meals.find((m) => m.meal_type === mealType);
+    const hadExisting = Boolean(mealItem?.current_intention);
 
     try {
       setSubmittingMeal(mealType);
@@ -67,10 +69,13 @@ export const StudentSchedule: React.FC = () => {
         status: choice,
       });
 
-      setAnnouncement(`Successfully saved intention for ${mealType}.`);
+      const msg = hadExisting
+        ? 'Your meal intention has been updated.'
+        : `Your ${mealType.toLowerCase()} intention has been saved.`;
+      setAnnouncement(msg);
       await loadSchedule(scheduleData.days[0]?.date);
     } catch (err: any) {
-      setAnnouncement(`Failed to save intention: ${err.message}`);
+      setAnnouncement('Unable to save your response. Please try again.');
       throw err;
     } finally {
       setSubmittingMeal(null);
@@ -81,12 +86,12 @@ export const StudentSchedule: React.FC = () => {
     try {
       setAnnouncement('Withdrawing meal intention...');
       await studentApi.withdrawIntention(intentionId);
-      setAnnouncement('Meal intention withdrawn.');
+      setAnnouncement('Your response was withdrawn successfully.');
       if (scheduleData) {
         await loadSchedule(scheduleData.days[0]?.date);
       }
     } catch (err: any) {
-      setAnnouncement(`Failed to withdraw intention: ${err.message}`);
+      setAnnouncement('The response deadline has passed. You can no longer change this intention.');
       throw err;
     }
   };

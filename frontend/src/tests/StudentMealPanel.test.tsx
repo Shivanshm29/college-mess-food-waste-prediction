@@ -97,4 +97,110 @@ describe('StudentMealPanel component', () => {
 
     expect(screen.getByText(/Menu not published yet/i)).toBeInTheDocument();
   });
+
+  it('prompts confirmation modal before withdrawing an intention (Rule 5 & 6)', async () => {
+    const onWithdraw = vi.fn().mockResolvedValue(undefined);
+    const mealWithIntention: StudentMealItem = {
+      ...mockMealOpen,
+      current_intention: {
+        id: 42,
+        user_id: 1,
+        date: '2026-10-19',
+        meal_type: 'Lunch',
+        status: 'likely',
+        notes: '',
+        created_at: '2026-10-18T10:00:00',
+        updated_at: '2026-10-18T10:00:00',
+      },
+    };
+
+    render(
+      <StudentMealPanel
+        meal={mealWithIntention}
+        dateStr="2026-10-19"
+        onSaveIntention={vi.fn().mockResolvedValue(undefined)}
+        onWithdrawIntention={onWithdraw}
+      />
+    );
+
+    // Find and click the withdraw button
+    const withdrawBtn = screen.getByRole('button', { name: /withdraw/i });
+    expect(withdrawBtn).toBeInTheDocument();
+    fireEvent.click(withdrawBtn);
+
+    // Confirm dialog should appear
+    expect(screen.getByText('Withdraw Meal Intention')).toBeInTheDocument();
+    expect(screen.getByText(/Are you sure you want to withdraw your Lunch intention/i)).toBeInTheDocument();
+
+    // Confirm the withdrawal
+    const confirmWithdrawBtn = screen.getByRole('button', { name: 'Withdraw Response' });
+    fireEvent.click(confirmWithdrawBtn);
+
+    await waitFor(() => {
+      expect(onWithdraw).toHaveBeenCalledWith(42);
+      expect(screen.getByText('Your response was withdrawn successfully.')).toBeInTheDocument();
+    });
+  });
+
+  it('displays informative feedback when updating an existing intention (Rule 3)', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const mealWithIntention: StudentMealItem = {
+      ...mockMealOpen,
+      current_intention: {
+        id: 42,
+        user_id: 1,
+        date: '2026-10-19',
+        meal_type: 'Lunch',
+        status: 'likely',
+        notes: '',
+        created_at: '2026-10-18T10:00:00',
+        updated_at: '2026-10-18T10:00:00',
+      },
+    };
+
+    render(
+      <StudentMealPanel
+        meal={mealWithIntention}
+        dateStr="2026-10-19"
+        onSaveIntention={onSave}
+      />
+    );
+
+    // Click 'Change' to switch into edit mode (Golden Rule 6 & 8)
+    const changeBtn = screen.getByRole('button', { name: /change/i });
+    expect(changeBtn).toBeInTheDocument();
+    fireEvent.click(changeBtn);
+
+    // Switch selection to 'unlikely'
+    const unlikelyRadio = screen.getByDisplayValue('unlikely');
+    fireEvent.click(unlikelyRadio);
+
+    const confirmBtn = screen.getByRole('button', { name: /confirm response/i });
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith('Lunch', 'unlikely');
+      expect(screen.getByText('Your meal intention has been updated.')).toBeInTheDocument();
+    });
+  });
+
+  it('displays special menu notification banner without random dishes when is_special is true', () => {
+    const mockSpecialMeal: StudentMealItem = {
+      ...mockMealOpen,
+      is_special: true,
+      special_notice: 'Special festive dinner feast scheduled today.',
+    };
+    render(
+      <StudentMealPanel
+        meal={mockSpecialMeal}
+        dateStr="2026-10-19"
+        onSaveIntention={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+
+    expect(screen.getByText('Special Menu Scheduled')).toBeInTheDocument();
+    expect(screen.getByText('Special festive dinner feast scheduled today.')).toBeInTheDocument();
+    expect(screen.getByText(/Curated chef's festive dishes will be served for this feast/i)).toBeInTheDocument();
+  });
 });
+

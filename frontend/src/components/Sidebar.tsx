@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
+  Users,
   PlusCircle,
   History,
   BarChart3,
@@ -18,6 +19,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const navItems = [
     { name: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
+    { name: 'Student Intentions', to: '/intentions', icon: Users },
     { name: 'New Prediction', to: '/predictions/new', icon: PlusCircle },
     { name: 'Prediction History', to: '/predictions/history', icon: History },
     { name: 'Analytics & Trends', to: '/analytics', icon: BarChart3 },

@@ -22,6 +22,8 @@ export interface StudentMealItem {
   closure_reason?: string | null;
   menu_items: string;
   category: string;
+  is_special?: boolean;
+  special_notice?: string | null;
   current_intention?: MealIntention | null;
 }
 
@@ -33,6 +35,8 @@ export interface UpcomingMealSummary {
   cutoff_time: string;
   menu_items: string;
   category: string;
+  is_special?: boolean;
+  special_notice?: string | null;
   intention_status?: IntentionChoice | null;
 }
 

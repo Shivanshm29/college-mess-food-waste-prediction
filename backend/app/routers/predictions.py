@@ -1,25 +1,35 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+from backend.app.config import settings
 from backend.app.database import get_db
 from backend.app.ml_service import ml_service
 from backend.app.models import Prediction, User
 from backend.app.schemas import (
+    ActualOutcomeCreate,
+    MealType,
     MenuRecommendation,
     MenuRecommendationRequest,
+    NextMealFeaturesResponse,
     PaginatedPredictions,
     PredictionCreate,
     PredictionResponse,
+    SpecialMealType,
 )
-from backend.app.security import get_current_user
+from backend.app.security import get_current_user, require_manager_or_admin
+from backend.app.validation import calculate_special_meal_target
 
 router = APIRouter(prefix="/predictions", tags=["Predictions"])
 
 
-def _enhance_prediction_response(p: Prediction, include_recommendations: bool = False) -> PredictionResponse:
-    """Add computed usability indicators and intelligent menu recommendations to prediction response."""
+def _enhance_prediction_response(
+    p: Prediction,
+    include_recommendations: bool = False,
+    db: Optional[Session] = None,
+) -> PredictionResponse:
+    """Add computed usability indicators, special meal rule overlays, student intentions context, and actuals differences to prediction response."""
     waste_pct = round((p.expected_food_wastage_kg / p.expected_food_required_kg * 100), 2) if p.expected_food_required_kg > 0 else 0.0
     food_per_student = round((p.expected_food_required_kg / p.expected_students), 3) if p.expected_students > 0 else 0.0
     turnout_pct = round((p.expected_students / p.mess_capacity_students * 100), 1) if p.mess_capacity_students > 0 else 0.0
@@ -30,6 +40,70 @@ def _enhance_prediction_response(p: Prediction, include_recommendations: bool = 
     resp.food_per_student_kg = food_per_student
     resp.is_low_turnout = is_low
     resp.turnout_percentage = turnout_pct
+
+    # Operational Rule: Special Meal Target (Clearly distinguished from ML model output)
+    if p.special_meal == "Yes":
+        target = calculate_special_meal_target(p.mess_capacity_students)
+        resp.special_meal_target = target
+        resp.rule_target_students = target
+        resp.rule_explanation = (
+            f"Special meal operational assumption: Target attendance is at least 94% of mess capacity "
+            f"({target} of {p.mess_capacity_students} students). ML model forecast is {round(p.expected_students)} students."
+        )
+
+    # Contextual Student Intentions (Submitted voluntary self-reports before cutoff)
+    if db is not None:
+        from backend.app.models import MealIntention
+        likely_cnt = (
+            db.query(func.count(MealIntention.id))
+            .filter(
+                MealIntention.date == p.date,
+                MealIntention.meal_type == p.meal_type,
+                MealIntention.status == "likely",
+            )
+            .scalar()
+            or 0
+        )
+        unlikely_cnt = (
+            db.query(func.count(MealIntention.id))
+            .filter(
+                MealIntention.date == p.date,
+                MealIntention.meal_type == p.meal_type,
+                MealIntention.status == "unlikely",
+            )
+            .scalar()
+            or 0
+        )
+        total_int = (
+            db.query(func.count(MealIntention.id))
+            .filter(
+                MealIntention.date == p.date,
+                MealIntention.meal_type == p.meal_type,
+            )
+            .scalar()
+            or 0
+        )
+        if total_int > 0:
+            resp.intentions_likely_count = likely_cnt
+            resp.intentions_unlikely_count = unlikely_cnt
+            resp.intentions_total_submitted = total_int
+            resp.intentions_summary_note = (
+                f"Student intentions: {likely_cnt} likely to attend, {unlikely_cnt} not attending ({total_int} total responses)."
+            )
+
+    # Actual outcome tracking and variance calculation
+    has_act = (
+        p.actual_attendance is not None
+        or p.actual_food_prepared_kg is not None
+        or p.actual_food_wasted_kg is not None
+    )
+    resp.has_actuals = has_act
+    if p.actual_attendance is not None:
+        resp.attendance_difference = round(p.actual_attendance - p.expected_students, 1)
+    if p.actual_food_prepared_kg is not None:
+        resp.food_difference_kg = round(p.actual_food_prepared_kg - p.expected_food_required_kg, 2)
+    if p.actual_food_wasted_kg is not None:
+        resp.waste_difference_kg = round(p.actual_food_wasted_kg - p.expected_food_wastage_kg, 2)
 
     # Generate proactive recommendations if attendance is low or specifically requested
     if include_recommendations or is_low:
@@ -118,12 +192,12 @@ def get_menu_recommendations(
 )
 def create_prediction(
     data: PredictionCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_manager_or_admin),
     db: Session = Depends(get_db),
 ):
     """
     Validate meal planning inputs, run ML regression models, enforce domain bounds,
-    and persist the record bound to the authenticated user.
+    and persist the record bound to the authenticated manager/admin user.
     """
     # Parse date to derive day of week and weekend flag reliably
     parsed_date = date.fromisoformat(data.date)
@@ -159,6 +233,9 @@ def create_prediction(
             detail=f"{str(e)}",
         )
 
+    # Check if actual outcomes were supplied
+    actual_att = data.actual_attendance or data.attendance
+    has_actuals = actual_att is not None or data.actual_food_prepared_kg is not None or data.actual_food_wasted_kg is not None
 
     # Persist prediction in SQLite database (Never trust user_id from client body!)
     prediction = Prediction(
@@ -177,6 +254,10 @@ def create_prediction(
         expected_students=results["expected_students"],
         expected_food_required_kg=results["expected_food_required_kg"],
         expected_food_wastage_kg=results["expected_food_wastage_kg"],
+        actual_attendance=actual_att,
+        actual_food_prepared_kg=data.actual_food_prepared_kg,
+        actual_food_wasted_kg=data.actual_food_wasted_kg,
+        recorded_at=datetime.now(timezone.utc) if has_actuals else None,
         model_version=ml_service.model_version,
         notes=data.notes.strip() if data.notes else None,
     )
@@ -185,7 +266,78 @@ def create_prediction(
     db.commit()
     db.refresh(prediction)
 
-    return _enhance_prediction_response(prediction, include_recommendations=True)
+    return _enhance_prediction_response(prediction, include_recommendations=True, db=db)
+
+
+@router.get(
+    "/next-meal",
+    response_model=NextMealFeaturesResponse,
+    summary="Get auto-populated input features for the next upcoming meal",
+)
+def get_next_available_meal_features(
+    current_user: User = Depends(require_manager_or_admin),
+):
+    """
+    Shortcut endpoint for mess managers to quickly retrieve all input features for the next
+    upcoming available meal without manual entry. Auto-determines date, meal slot, scheduled
+    menu, special meal rules, calendar holiday status, capacity, and default weather.
+    """
+    now = datetime.now()
+    hour = now.hour
+    minute = now.minute
+    time_val = hour + minute / 60.0
+
+    target_date = now.date()
+    is_tomorrow = False
+    meal_type: MealType = "Breakfast"
+    time_window = "7:30 AM - 9:30 AM"
+
+    if time_val < 9.5:
+        meal_type = "Breakfast"
+        time_window = "7:30 AM - 9:30 AM"
+    elif time_val < 14.5:
+        meal_type = "Lunch"
+        time_window = "12:30 PM - 2:30 PM"
+    elif time_val < 17.5:
+        meal_type = "Snacks"
+        time_window = "4:30 PM - 6:00 PM"
+    elif time_val < 21.5:
+        meal_type = "Dinner"
+        time_window = "7:30 PM - 9:30 PM"
+    else:
+        target_date = target_date + timedelta(days=1)
+        is_tomorrow = True
+        meal_type = "Breakfast"
+        time_window = "7:30 AM - 9:30 AM"
+
+    days_list = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    day_name = days_list[target_date.weekday()]
+    is_sunday = target_date.weekday() == 6
+
+    special_meal: SpecialMealType = "Yes" if (is_sunday and meal_type == "Dinner") else "No"
+    menu_items = ml_service.get_scheduled_menu(day_name, meal_type, special_meal)
+    date_str = target_date.isoformat()
+
+    label = f"Tomorrow's {meal_type}" if is_tomorrow else f"Today's {meal_type}"
+    desc = f"Next scheduled dining service is {label} ({time_window}) on {day_name}, {date_str}."
+
+    return NextMealFeaturesResponse(
+        date=date_str,
+        day_of_week=day_name,
+        is_tomorrow=is_tomorrow,
+        meal_type=meal_type,
+        main_menu_items=menu_items,
+        special_meal=special_meal,
+        mess_capacity_students=settings.DEFAULT_MESS_CAPACITY,
+        is_holiday=is_sunday,
+        exam_on_day=False,
+        college_event=False,
+        weather_condition="Clear",
+        notes=f"Auto-filled shortcut for {label} ({day_name}, {date_str})",
+        time_window=time_window,
+        label=label,
+        description=desc,
+    )
 
 
 @router.get(
@@ -237,7 +389,7 @@ def get_predictions(
     total_pages = max(1, (total + page_size - 1) // page_size) if total > 0 else 1
 
     return PaginatedPredictions(
-        items=[_enhance_prediction_response(p) for p in records],
+        items=[_enhance_prediction_response(p, db=db) for p in records],
         total=total,
         page=page,
         page_size=page_size,
@@ -270,7 +422,7 @@ def get_prediction_by_id(
             detail="You do not have permission to view this prediction record.",
         )
 
-    return _enhance_prediction_response(prediction, include_recommendations=True)
+    return _enhance_prediction_response(prediction, include_recommendations=True, db=db)
 
 
 @router.get(
@@ -326,10 +478,10 @@ def get_prediction_recommendations_by_id(
 )
 def delete_prediction(
     prediction_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_manager_or_admin),
     db: Session = Depends(get_db),
 ):
-    """Delete a prediction record with ownership verification."""
+    """Delete a prediction record with manager ownership verification."""
     prediction = db.query(Prediction).filter(Prediction.id == prediction_id).first()
     if not prediction:
         raise HTTPException(
@@ -346,3 +498,47 @@ def delete_prediction(
     db.delete(prediction)
     db.commit()
     return {"message": f"Prediction record {prediction_id} has been deleted."}
+
+
+@router.post(
+    "/{prediction_id}/actuals",
+    response_model=PredictionResponse,
+    summary="Record post-meal actual attendance, prepared food, and wastage",
+)
+@router.put(
+    "/{prediction_id}/actuals",
+    response_model=PredictionResponse,
+    summary="Update post-meal actual attendance, prepared food, and wastage",
+)
+def record_actual_outcome(
+    prediction_id: int,
+    data: ActualOutcomeCreate,
+    current_user: User = Depends(require_manager_or_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Record verified post-meal measurements (actual attendance, food prepared kg, food wasted kg).
+    Clearly distinguishes actual observations from ML forecasts and calculates differences.
+    """
+    prediction = db.query(Prediction).filter(Prediction.id == prediction_id).first()
+    if not prediction:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Prediction with ID {prediction_id} not found.",
+        )
+
+    if prediction.user_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to modify this prediction record.",
+        )
+
+    prediction.actual_attendance = data.actual_attendance
+    prediction.actual_food_prepared_kg = data.actual_food_prepared_kg
+    prediction.actual_food_wasted_kg = data.actual_food_wasted_kg
+    prediction.recorded_at = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(prediction)
+
+    return _enhance_prediction_response(prediction, db=db)

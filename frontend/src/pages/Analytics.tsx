@@ -116,7 +116,7 @@ export const Analytics: React.FC = () => {
           icon={<Calendar className="w-4 h-4" />}
         />
         <StatCard
-          label="Cumulative Food Required"
+          label="Expected Food Required (Total kg)"
           value={hasHistory ? data?.total_expected_food_kg ?? 0 : '--'}
           unit={hasHistory ? 'kg' : ''}
           subtext="Total predicted cooking volume"
@@ -124,7 +124,7 @@ export const Analytics: React.FC = () => {
           icon={<Utensils className="w-4 h-4" />}
         />
         <StatCard
-          label="Cumulative Expected Waste"
+          label="Expected Food Wastage (Total kg)"
           value={hasHistory ? data?.total_expected_wastage_kg ?? 0 : '--'}
           unit={hasHistory ? 'kg' : ''}
           subtext="Total predicted leftover scrap"
@@ -183,7 +183,7 @@ export const Analytics: React.FC = () => {
           <section aria-labelledby="timeline-heading" className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-sm">
             <div className="pb-3 border-b border-[#F1F5F9] mb-4">
               <h2 id="timeline-heading" className="text-base font-semibold text-[#1E293B]">
-                Forecasted Food Requirements & Wastage Over Time
+                Expected Food Required & Expected Food Wastage Over Time
               </h2>
               <p className="text-xs text-[#64748B]">
                 Chronological sequence of saved predictions (in kilograms)
@@ -209,7 +209,7 @@ export const Analytics: React.FC = () => {
                   <Tooltip
                     formatter={(value: any, name: any) => [
                       `${value} kg`,
-                      name === 'expected_food_required_kg' ? 'Food Required' : 'Expected Wastage',
+                      name === 'expected_food_required_kg' ? 'Expected Food Required' : 'Expected Food Wastage',
                     ]}
                     contentStyle={{
                       backgroundColor: '#FFFFFF',
@@ -221,7 +221,7 @@ export const Analytics: React.FC = () => {
                   <Legend
                     wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}
                     formatter={(v) =>
-                      v === 'expected_food_required_kg' ? 'Food Required (kg)' : 'Expected Wastage (kg)'
+                      v === 'expected_food_required_kg' ? 'Expected Food Required (kg)' : 'Expected Food Wastage (kg)'
                     }
                   />
                   <Line
@@ -268,7 +268,7 @@ export const Analytics: React.FC = () => {
                   <Tooltip
                     formatter={(value: any, name: any) => [
                       `${value} kg`,
-                      name === 'avg_expected_food_kg' ? 'Avg Food Required' : 'Avg Expected Wastage',
+                      name === 'avg_expected_food_kg' ? 'Avg Expected Food Required' : 'Avg Expected Food Wastage',
                     ]}
                     contentStyle={{
                       backgroundColor: '#FFFFFF',
@@ -280,7 +280,7 @@ export const Analytics: React.FC = () => {
                   <Legend
                     wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}
                     formatter={(v) =>
-                      v === 'avg_expected_food_kg' ? 'Avg Food Required (kg)' : 'Avg Expected Wastage (kg)'
+                      v === 'avg_expected_food_kg' ? 'Avg Expected Food Required (kg)' : 'Avg Expected Food Wastage (kg)'
                     }
                   />
                   <Bar dataKey="avg_expected_food_kg" fill="#2563EB" name="avg_expected_food_kg" radius={[4, 4, 0, 0]} />
@@ -310,9 +310,9 @@ export const Analytics: React.FC = () => {
                   <tr>
                     <th scope="col" className="px-4 py-3">Meal Type</th>
                     <th scope="col" className="px-4 py-3 text-right">Predictions Count</th>
-                    <th scope="col" className="px-4 py-3 text-right">Avg Students</th>
-                    <th scope="col" className="px-4 py-3 text-right">Avg Food Req (kg)</th>
-                    <th scope="col" className="px-4 py-3 text-right">Avg Wastage (kg)</th>
+                    <th scope="col" className="px-4 py-3 text-right">Avg Expected Students</th>
+                    <th scope="col" className="px-4 py-3 text-right">Avg Expected Food Required (kg)</th>
+                    <th scope="col" className="px-4 py-3 text-right">Avg Expected Food Wastage (kg)</th>
                     <th scope="col" className="px-4 py-3 text-right">Avg Waste Rate (%)</th>
                   </tr>
                 </thead>
@@ -345,11 +345,11 @@ export const Analytics: React.FC = () => {
               <table className="min-w-full divide-y divide-[#E2E8F0] text-sm">
                 <thead className="bg-[#F8FAFC] text-xs font-semibold text-[#475569] uppercase tracking-wider text-left sticky top-0">
                   <tr>
-                    <th scope="col" className="px-4 py-3">Date</th>
-                    <th scope="col" className="px-4 py-3">Meal</th>
-                    <th scope="col" className="px-4 py-3 text-right">Students</th>
-                    <th scope="col" className="px-4 py-3 text-right">Food Req (kg)</th>
-                    <th scope="col" className="px-4 py-3 text-right">Expected Wastage (kg)</th>
+                    <th scope="col" className="px-4 py-3">Meal Date</th>
+                    <th scope="col" className="px-4 py-3">Meal Type</th>
+                    <th scope="col" className="px-4 py-3 text-right">Expected Students</th>
+                    <th scope="col" className="px-4 py-3 text-right">Expected Food Required (kg)</th>
+                    <th scope="col" className="px-4 py-3 text-right">Expected Food Wastage (kg)</th>
                     <th scope="col" className="px-4 py-3 text-right">Waste %</th>
                   </tr>
                 </thead>

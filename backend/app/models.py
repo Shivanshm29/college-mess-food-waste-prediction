@@ -76,10 +76,16 @@ class Prediction(Base):
     mess_capacity_students = Column(Integer, nullable=False, default=556)
     special_meal = Column(String(10), nullable=False, default="No")  # "Yes" / "No"
 
-    # Outputs
+    # Outputs (Predicted / Forecast)
     expected_students = Column(Float, nullable=False)
     expected_food_required_kg = Column(Float, nullable=False)
     expected_food_wastage_kg = Column(Float, nullable=False)
+
+    # Actual Recorded Outcomes (Post-meal measurements - clearly separated from predictions)
+    actual_attendance = Column(Integer, nullable=True)
+    actual_food_prepared_kg = Column(Float, nullable=True)
+    actual_food_wasted_kg = Column(Float, nullable=True)
+    recorded_at = Column(DateTime, nullable=True)
 
     # Metadata
     model_version = Column(String(20), nullable=False, default="1.0.0")
@@ -106,6 +112,22 @@ class MealIntention(Base):
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
     user = relationship("User", back_populates="intentions")
+
+
+class MealIntentionAudit(Base):
+    """Historical audit log of student intention submissions, updates, and withdrawals."""
+    __tablename__ = "meal_intention_audits"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    date = Column(String(10), nullable=False, index=True)  # YYYY-MM-DD
+    meal_type = Column(String(30), nullable=False, index=True)  # Breakfast, Lunch, Dinner, Snacks
+    status = Column(String(20), nullable=False)  # likely, unlikely, unsure
+    action = Column(String(20), nullable=False)  # CREATED, UPDATED, WITHDRAWN
+    notes = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=utcnow, nullable=False, index=True)
+
+    user = relationship("User")
 
 
 class MealFeedback(Base):

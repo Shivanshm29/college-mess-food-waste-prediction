@@ -54,7 +54,10 @@ export const StudentDashboard: React.FC = () => {
     if (!data) return;
     try {
       setSubmittingMeal(mealType);
-      setAnnouncement(`Saving your ${choice} intention for ${mealType}...`);
+      setAnnouncement(`Saving intention for ${mealType}...`);
+
+      const mealItem = data.today_meals.find((m) => m.meal_type === mealType);
+      const hadExisting = Boolean(mealItem?.current_intention);
 
       await studentApi.saveIntention({
         date: data.today_date,
@@ -62,10 +65,13 @@ export const StudentDashboard: React.FC = () => {
         status: choice,
       });
 
-      setAnnouncement(`Successfully recorded: ${choice} to attend ${mealType}.`);
+      const msg = hadExisting
+        ? 'Your meal intention has been updated.'
+        : `Your ${mealType.toLowerCase()} intention has been saved.`;
+      setAnnouncement(msg);
       await loadDashboard();
     } catch (err: any) {
-      setAnnouncement(`Failed to save intention: ${err.message}`);
+      setAnnouncement(`Unable to save your response. Please try again.`);
       throw err;
     } finally {
       setSubmittingMeal(null);
@@ -76,10 +82,10 @@ export const StudentDashboard: React.FC = () => {
     try {
       setAnnouncement('Withdrawing intention...');
       await studentApi.withdrawIntention(intentionId);
-      setAnnouncement('Meal intention withdrawn.');
+      setAnnouncement('Your response was withdrawn successfully.');
       await loadDashboard();
     } catch (err: any) {
-      setAnnouncement(`Failed to withdraw: ${err.message}`);
+      setAnnouncement(`Unable to withdraw intention. Response window may have closed.`);
       throw err;
     }
   };

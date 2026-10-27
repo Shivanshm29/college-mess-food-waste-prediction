@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { dashboardApi } from '../api/dashboard';
-import type { DashboardSummary, PredictionRecord } from '../types';
+import { intentionsApi } from '../api/intentions';
+import type { DashboardSummary, PredictionRecord, DateIntentionsSummary } from '../types';
 import { StatCard } from '../components/StatCard';
 import { Badge } from '../components/Badge';
 import { PredictionDetailModal } from './PredictionDetailModal';
@@ -15,7 +16,12 @@ import {
   AlertCircle,
   Sparkles,
   Table as TableIcon,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Zap,
 } from 'lucide-react';
+import { determineNextAvailableMeal } from '../utils/nextMeal';
 import {
   BarChart,
   Bar,
@@ -26,20 +32,38 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
+import { StudentNamesRosterModal } from '../components/StudentNamesRosterModal';
 
 export const Dashboard: React.FC = () => {
   const [data, setData] = useState<DashboardSummary | null>(null);
+  const [todayIntentions, setTodayIntentions] = useState<DateIntentionsSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedPrediction, setSelectedPrediction] = useState<PredictionRecord | null>(null);
   const [showChartTable, setShowChartTable] = useState(false);
+  const [isRosterModalOpen, setIsRosterModalOpen] = useState(false);
+  const [rosterMeal, setRosterMeal] = useState('');
+  const nextMealPreview = determineNextAvailableMeal();
 
   const fetchSummary = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      const res = await dashboardApi.getSummary();
-      setData(res);
+      const todayStr = new Date().toISOString().split('T')[0];
+      const [resSummary, resIntentions] = await Promise.allSettled([
+        dashboardApi.getSummary(),
+        intentionsApi.getSummary(todayStr),
+      ]);
+
+      if (resSummary.status === 'fulfilled') {
+        setData(resSummary.value);
+      } else {
+        throw resSummary.reason;
+      }
+
+      if (resIntentions.status === 'fulfilled') {
+        setTodayIntentions(resIntentions.value);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load dashboard summary.');
     } finally {
@@ -93,13 +117,24 @@ export const Dashboard: React.FC = () => {
           </p>
         </div>
 
-        <Link
-          to="/predictions/new"
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-[#2563EB] text-white text-sm font-medium hover:bg-[#1D4ED8] shadow-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#2563EB]"
-        >
-          <PlusCircle className="w-4 h-4" aria-hidden="true" />
-          <span>New Prediction</span>
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to="/predictions/new?shortcut=next_meal"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-md bg-[#EFF6FF] text-[#2563EB] hover:bg-[#DBEAFE] border border-[#BFDBFE] text-sm font-semibold shadow-2xs focus-visible:ring-2 focus-visible:ring-[#2563EB] transition-colors"
+            title={`Auto-fill prediction inputs for ${nextMealPreview.label}`}
+          >
+            <Zap className="w-4 h-4 fill-[#2563EB] text-[#2563EB]" aria-hidden="true" />
+            <span>Predict Next Meal ({nextMealPreview.meal_type})</span>
+          </Link>
+
+          <Link
+            to="/predictions/new"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-[#2563EB] text-white text-sm font-medium hover:bg-[#1D4ED8] shadow-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#2563EB]"
+          >
+            <PlusCircle className="w-4 h-4" aria-hidden="true" />
+            <span>New Prediction</span>
+          </Link>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -113,7 +148,7 @@ export const Dashboard: React.FC = () => {
           icon={<Calendar className="w-4 h-4" />}
         />
         <StatCard
-          label="Avg Expected Attendance"
+          label="Avg Expected Students"
           value={hasHistory ? data?.avg_expected_students ?? 0 : '--'}
           unit={hasHistory ? 'students' : ''}
           subtext={hasHistory ? 'Mean projected dining turnout' : 'Awaiting predictions'}
@@ -121,7 +156,7 @@ export const Dashboard: React.FC = () => {
           icon={<Users className="w-4 h-4" />}
         />
         <StatCard
-          label="Avg Food Requirement"
+          label="Avg Expected Food Required (kg)"
           value={hasHistory ? data?.avg_expected_food_kg ?? 0 : '--'}
           unit={hasHistory ? 'kg' : ''}
           subtext={hasHistory ? 'Mean cooking batch volume' : 'Awaiting predictions'}
@@ -129,7 +164,7 @@ export const Dashboard: React.FC = () => {
           icon={<Utensils className="w-4 h-4" />}
         />
         <StatCard
-          label="Avg Expected Wastage"
+          label="Avg Expected Food Wastage (kg)"
           value={hasHistory ? data?.avg_expected_wastage_kg ?? 0 : '--'}
           unit={hasHistory ? 'kg' : ''}
           subtext={hasHistory ? `${data?.avg_waste_percentage}% of total prepared food` : 'Zero waste tracked'}
@@ -137,6 +172,116 @@ export const Dashboard: React.FC = () => {
           icon={<Trash2 className="w-4 h-4" />}
         />
       </div>
+
+      {/* Advance Student Attendance Intentions Widget */}
+      {todayIntentions && (
+        <section
+          aria-labelledby="intentions-summary-heading"
+          className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-sm space-y-4"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#F1F5F9]">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-blue-50 text-[#2563EB] rounded-lg border border-blue-100">
+                <Users className="w-5 h-5" aria-hidden="true" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 id="intentions-summary-heading" className="text-base font-semibold text-[#1E293B]">
+                    Today's Student Attendance Intentions
+                  </h2>
+                  <span className="text-[11px] font-medium bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
+                    {todayIntentions.date}
+                  </span>
+                </div>
+                <p className="text-xs text-[#64748B] mt-0.5">
+                  Advance voluntary submissions • {todayIntentions.total_unique_students} unique student{todayIntentions.total_unique_students === 1 ? '' : 's'} responded ({todayIntentions.total_submitted_intentions} total meal selections)
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setRosterMeal('');
+                  setIsRosterModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-[#2563EB] hover:bg-[#1D4ED8] px-3 py-1.5 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+                title="View student names list categorized by Yes, No, or Maybe"
+              >
+                <Users className="w-3.5 h-3.5" aria-hidden="true" />
+                <span>View Student Names</span>
+              </button>
+              <Link
+                to="/intentions"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#2563EB] hover:text-[#1D4ED8] bg-blue-50 hover:bg-blue-100/80 px-3 py-1.5 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+              >
+                <span>Manage & Export</span>
+                <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+              </Link>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {(['Breakfast', 'Lunch', 'Dinner'] as const).map((meal) => {
+              const item = todayIntentions.meals.find((m) => m.meal_type === meal);
+              return (
+                <div
+                  key={meal}
+                  className="p-3.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg hover:border-slate-300 transition-colors"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold text-[#1E293B]">{meal}</span>
+                    <span className="text-xs text-[#64748B] bg-white border border-[#CBD5E1] px-2 py-0.5 rounded">
+                      {item ? item.total_submitted : 0} submitted
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-emerald-700 font-medium">
+                        <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
+                        Likely to attend
+                      </span>
+                      <strong className="text-emerald-800 text-sm">{item ? item.likely_count : 0}</strong>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-rose-700 font-medium">
+                        <XCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                        Not attending
+                      </span>
+                      <strong className="text-rose-800 text-sm">{item ? item.unlikely_count : 0}</strong>
+                    </div>
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-200 text-slate-500">
+                      <span className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5" aria-hidden="true" />
+                        No response (of {todayIntentions.configured_capacity})
+                      </span>
+                      <span className="font-semibold text-slate-700">{item ? item.no_response_count : todayIntentions.configured_capacity}</span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRosterMeal(meal);
+                      setIsRosterModalOpen(true);
+                    }}
+                    className="w-full mt-2.5 inline-flex items-center justify-center gap-1 py-1 px-2 text-[11px] font-medium text-[#2563EB] bg-white hover:bg-blue-50 border border-blue-200 rounded transition-colors"
+                  >
+                    <Users className="w-3 h-3" />
+                    <span>View Names List ({item ? item.total_submitted : 0})</span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          <p className="text-[11px] text-[#64748B] bg-slate-50 p-2.5 rounded border border-slate-200">
+            <strong>HCI Operational Rule:</strong> Student intention submissions indicate planned dining turnout before cutoff deadlines. They do not constitute verified physical entry scans or final food consumed.
+          </p>
+        </section>
+      )}
 
       {/* Empty State Banner if No History */}
       {!hasHistory && (
@@ -291,12 +436,12 @@ export const Dashboard: React.FC = () => {
             <table className="min-w-full divide-y divide-[#E2E8F0] text-sm">
               <thead className="bg-[#F8FAFC] text-left text-xs font-semibold text-[#475569] uppercase tracking-wider">
                 <tr>
-                  <th scope="col" className="px-4 py-3">Date & Day</th>
-                  <th scope="col" className="px-4 py-3">Meal</th>
-                  <th scope="col" className="px-4 py-3">Menu</th>
-                  <th scope="col" className="px-4 py-3 text-right">Students</th>
-                  <th scope="col" className="px-4 py-3 text-right">Food Required</th>
-                  <th scope="col" className="px-4 py-3 text-right">Wastage</th>
+                  <th scope="col" className="px-4 py-3">Meal Date</th>
+                  <th scope="col" className="px-4 py-3">Meal Type</th>
+                  <th scope="col" className="px-4 py-3">Main Menu</th>
+                  <th scope="col" className="px-4 py-3 text-right">Expected Students</th>
+                  <th scope="col" className="px-4 py-3 text-right">Expected Food Required (kg)</th>
+                  <th scope="col" className="px-4 py-3 text-right">Expected Food Wastage (kg)</th>
                   <th scope="col" className="px-4 py-3 text-center">Action</th>
                 </tr>
               </thead>
@@ -350,8 +495,17 @@ export const Dashboard: React.FC = () => {
           prediction={selectedPrediction}
           isOpen={!!selectedPrediction}
           onClose={() => setSelectedPrediction(null)}
+          onActualsUpdated={() => fetchSummary()}
         />
       )}
+
+      {/* Student Names Roster Modal (Yes / No / Maybe) */}
+      <StudentNamesRosterModal
+        isOpen={isRosterModalOpen}
+        onClose={() => setIsRosterModalOpen(false)}
+        dateStr={todayIntentions?.date || new Date().toISOString().split('T')[0]}
+        initialMealType={rosterMeal}
+      />
     </div>
   );
 };

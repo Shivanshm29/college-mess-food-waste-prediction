@@ -133,3 +133,51 @@ def other_auth_headers(other_user: User) -> dict:
     """JWT bearer headers for the second user."""
     token = create_access_token(data={"sub": str(other_user.id), "username": other_user.username, "role": other_user.role})
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture(scope="function")
+def student_user(db_session) -> User:
+    """Create a student user in the test database for role authorization tests."""
+    user = User(
+        username="student1",
+        email="student1@college.edu",
+        full_name="Hostel Student",
+        hashed_password=get_password_hash("StudentPass123!"),
+        role="student",
+        is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture(scope="function")
+def student_auth_headers(student_user: User) -> dict:
+    """JWT bearer headers for a student user."""
+    token = create_access_token(data={"sub": str(student_user.id), "username": student_user.username, "role": student_user.role})
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture(scope="function")
+def second_student_user(db_session) -> User:
+    """Create a second student for isolation testing."""
+    user = User(
+        username="student2",
+        email="student2@college.edu",
+        full_name="Second Hostel Student",
+        hashed_password=get_password_hash("StudentPass456!"),
+        role="student",
+        is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture(scope="function")
+def second_student_auth_headers(second_student_user: User) -> dict:
+    """JWT bearer headers for the second student."""
+    token = create_access_token(data={"sub": str(second_student_user.id), "username": second_student_user.username, "role": second_student_user.role})
+    return {"Authorization": f"Bearer {token}"}

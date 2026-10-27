@@ -9,7 +9,7 @@ from backend.app.schemas import (
     MealWiseStat,
     TimelineDataPoint,
 )
-from backend.app.security import get_current_user
+from backend.app.security import require_manager_or_admin
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/analytics", tags=["Analytics"])
     summary="Get descriptive analytics and timeline series based on saved predictions",
 )
 def get_analytics_summary(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_manager_or_admin),
     db: Session = Depends(get_db),
 ):
     """

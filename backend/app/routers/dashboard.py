@@ -6,7 +6,7 @@ from backend.app.database import get_db
 from backend.app.models import Prediction, User
 from backend.app.routers.predictions import _enhance_prediction_response
 from backend.app.schemas import DashboardSummaryResponse, MealWiseStat
-from backend.app.security import get_current_user
+from backend.app.security import require_manager_or_admin
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
     summary="Get aggregated statistics and recent predictions for manager dashboard",
 )
 def get_dashboard_summary(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_manager_or_admin),
     db: Session = Depends(get_db),
 ):
     """
@@ -105,7 +105,7 @@ def get_dashboard_summary(
         avg_expected_food_kg=avg_food,
         avg_expected_wastage_kg=avg_waste,
         avg_waste_percentage=avg_waste_pct,
-        recent_predictions=[_enhance_prediction_response(p) for p in recent_records],
+        recent_predictions=[_enhance_prediction_response(p, db=db) for p in recent_records],
         meal_wise_summary=meal_wise_list,
         has_history=True,
     )

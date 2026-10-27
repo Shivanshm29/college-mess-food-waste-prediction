@@ -13,9 +13,11 @@ import {
   Undo2,
   ShieldCheck,
   UtensilsCrossed,
+  Sparkles,
 } from 'lucide-react';
 import { IntentionChoice, StudentMealItem } from '../../types/student';
 import { StudentBadge } from './StudentBadge';
+import { ConfirmDialog } from '../ConfirmDialog';
 
 interface StudentMealPanelProps {
   meal: StudentMealItem;
@@ -38,6 +40,16 @@ export const StudentMealPanel: React.FC<StudentMealPanelProps> = ({
   const [isEditing, setIsEditing] = useState<boolean>(!meal.current_intention);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [panelError, setPanelError] = useState<string | null>(null);
+  const [showWithdrawConfirm, setShowWithdrawConfirm] = useState<boolean>(false);
+  const [isWithdrawing, setIsWithdrawing] = useState<boolean>(false);
+
+  const isSpecialMeal = Boolean(
+    meal.is_special ||
+    meal.category === 'Special Feast' ||
+    meal.menu_items?.toLowerCase() === 'special' ||
+    meal.menu_items?.toLowerCase().includes('special feast') ||
+    meal.menu_items?.toLowerCase().includes('special menu')
+  );
 
   const getMealIcon = () => {
     switch (meal.meal_type) {
@@ -77,32 +89,54 @@ export const StudentMealPanel: React.FC<StudentMealPanelProps> = ({
       setPanelError('Please select whether you expect to attend before confirming.');
       return;
     }
+    const hadExisting = Boolean(meal.current_intention);
     try {
       setPanelError(null);
       await onSaveIntention(meal.meal_type, selectedChoice);
       setIsEditing(false);
-      setSaveSuccessMsg('Intention saved successfully!');
-      setTimeout(() => setSaveSuccessMsg(null), 3500);
+      const msg = hadExisting
+        ? 'Your meal intention has been updated.'
+        : `Your ${meal.meal_type.toLowerCase()} intention has been saved.`;
+      setSaveSuccessMsg(msg);
+      setTimeout(() => setSaveSuccessMsg(null), 4000);
     } catch (err: any) {
-      setPanelError(
-        err.message || 'We could not save your response. Your selection has been preserved—please try again.'
-      );
+      const errMsg = err?.message || '';
+      if (errMsg.toLowerCase().includes('deadline') || errMsg.toLowerCase().includes('cutoff') || errMsg.toLowerCase().includes('closed')) {
+        setPanelError('The response deadline has passed. You can no longer change this intention.');
+      } else {
+        setPanelError('Unable to save your response. Please try again.');
+      }
     }
   };
 
-  const handleWithdraw = async () => {
+  const handleWithdrawClick = () => {
+    if (!meal.current_intention || meal.is_closed) return;
+    setShowWithdrawConfirm(true);
+  };
+
+  const executeWithdraw = async () => {
     if (!meal.current_intention) return;
     try {
+      setIsWithdrawing(true);
       setPanelError(null);
       if (onWithdrawIntention) {
         await onWithdrawIntention(meal.current_intention.id);
         setSelectedChoice(null);
         setIsEditing(true);
-        setSaveSuccessMsg('Intention withdrawn.');
-        setTimeout(() => setSaveSuccessMsg(null), 3500);
+        setShowWithdrawConfirm(false);
+        setSaveSuccessMsg('Your response was withdrawn successfully.');
+        setTimeout(() => setSaveSuccessMsg(null), 4000);
       }
     } catch (err: any) {
-      setPanelError(err.message || 'Unable to withdraw intention. Response window may have closed.');
+      setShowWithdrawConfirm(false);
+      const errMsg = err?.message || '';
+      if (errMsg.toLowerCase().includes('deadline') || errMsg.toLowerCase().includes('cutoff') || errMsg.toLowerCase().includes('closed')) {
+        setPanelError('The response deadline has passed. You can no longer change this intention.');
+      } else {
+        setPanelError('Unable to save your response. Please try again.');
+      }
+    } finally {
+      setIsWithdrawing(false);
     }
   };
 
@@ -164,17 +198,65 @@ export const StudentMealPanel: React.FC<StudentMealPanelProps> = ({
 
       {/* Menu Presentation */}
       <div className="p-4 sm:p-5 space-y-4">
+        {/* Special Menu Notification Banner */}
+        {isSpecialMeal && (
+          <div
+            role="region"
+            aria-label="Special Menu Notification"
+            className="p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg flex items-start gap-3 text-xs text-amber-950 shadow-2xs"
+          >
+            <div className="p-1.5 bg-amber-100 rounded-md text-amber-700 flex-shrink-0 mt-0.5">
+              <Sparkles className="w-4 h-4" aria-hidden="true" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <strong className="text-amber-900 font-bold uppercase tracking-wider text-[11px]">
+                  Special Menu Notification
+                </strong>
+                <span className="px-1.5 py-0.2 bg-amber-200/80 text-amber-900 rounded font-semibold text-[10px]">
+                  Special Feast
+                </span>
+              </div>
+              <p className="mt-1 text-amber-800 leading-relaxed font-medium">
+                {meal.special_notice ||
+                  `This meal is designated as a Special Feast by Mess Management. A curated festive special menu will be prepared and served. Regular routine menu items do not apply.`}
+              </p>
+            </div>
+          </div>
+        )}
+
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-xs font-semibold uppercase tracking-wider text-[#68746C]">
               Scheduled Menu
             </span>
-            <span className="text-[11px] font-medium text-[#2D6A4F] bg-[#EBF7EE] px-2 py-0.5 rounded border border-[#D8F3DC]">
+            <span className={`text-[11px] font-medium px-2 py-0.5 rounded border ${
+              isSpecialMeal
+                ? 'text-amber-800 bg-amber-50 border-amber-200 font-bold'
+                : 'text-[#2D6A4F] bg-[#EBF7EE] border-[#D8F3DC]'
+            }`}>
               {meal.category}
             </span>
           </div>
 
-          {hasMenu ? (
+          {isSpecialMeal ? (
+            <div className="p-3.5 bg-amber-50/60 border border-amber-200/80 rounded-lg flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <Sparkles className="w-4 h-4 text-amber-600 flex-shrink-0" aria-hidden="true" />
+                <div>
+                  <p className="text-sm font-bold text-amber-950">
+                    Special Menu Scheduled
+                  </p>
+                  <p className="text-xs text-amber-800">
+                    Curated chef's festive dishes will be served for this feast.
+                  </p>
+                </div>
+              </div>
+              <span className="text-[11px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
+                Special Feast
+              </span>
+            </div>
+          ) : hasMenu ? (
             <div className="p-3 bg-[#F8F9FA] border border-[#E8ECE6] rounded-lg">
               <p className="text-sm font-medium text-[#242926] leading-relaxed">
                 {meal.menu_items}
@@ -253,9 +335,10 @@ export const StudentMealPanel: React.FC<StudentMealPanelProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={handleWithdraw}
-                  disabled={isSubmitting}
+                  onClick={handleWithdrawClick}
+                  disabled={isSubmitting || isWithdrawing}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[#E2E8F0] hover:bg-[#FEF2F2] text-[#9C4221] text-xs font-medium rounded-md shadow-2xs focus-visible:ring-2 focus-visible:ring-[#9C4221] transition-colors disabled:opacity-50"
+                  aria-label={`Withdraw intention for ${meal.meal_type}`}
                 >
                   <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
                   <span>Withdraw</span>
@@ -396,6 +479,18 @@ export const StudentMealPanel: React.FC<StudentMealPanelProps> = ({
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={showWithdrawConfirm}
+        title="Withdraw Meal Intention"
+        message={`Are you sure you want to withdraw your ${meal.meal_type} intention? The mess kitchen uses submitted intentions for batch portioning and zero food-waste planning.`}
+        confirmLabel="Withdraw Response"
+        cancelLabel="Keep Response"
+        isDestructive={true}
+        isLoading={isWithdrawing}
+        onConfirm={executeWithdraw}
+        onCancel={() => setShowWithdrawConfirm(false)}
+      />
     </article>
   );
 };

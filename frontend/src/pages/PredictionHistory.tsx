@@ -346,12 +346,13 @@ export const PredictionHistory: React.FC = () => {
             <table className="min-w-full divide-y divide-[#E2E8F0] text-sm">
               <thead className="bg-[#F8FAFC] text-left text-xs font-semibold text-[#475569] uppercase tracking-wider">
                 <tr>
-                  <th scope="col" className="px-4 py-3">Date & Day</th>
-                  <th scope="col" className="px-4 py-3">Meal</th>
+                  <th scope="col" className="px-4 py-3">Meal Date</th>
+                  <th scope="col" className="px-4 py-3">Meal Type</th>
                   <th scope="col" className="px-4 py-3">Main Menu</th>
                   <th scope="col" className="px-4 py-3 text-right">Expected Students</th>
-                  <th scope="col" className="px-4 py-3 text-right">Food Required</th>
-                  <th scope="col" className="px-4 py-3 text-right">Food Wastage</th>
+                  <th scope="col" className="px-4 py-3 text-right">Expected Food Required (kg)</th>
+                  <th scope="col" className="px-4 py-3 text-right">Expected Food Wastage (kg)</th>
+                  <th scope="col" className="px-4 py-3 text-center">Actual Outcome</th>
                   <th scope="col" className="px-4 py-3 text-center">Actions</th>
                 </tr>
               </thead>
@@ -389,6 +390,22 @@ export const PredictionHistory: React.FC = () => {
                       <div className="text-[10px] text-[#94A3B8]">
                         ({record.waste_percentage}%)
                       </div>
+                    </td>
+                    <td className="px-4 py-3 text-center whitespace-nowrap text-xs">
+                      {record.has_actuals ? (
+                        <div className="inline-flex flex-col items-center">
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium text-[11px]">
+                            Recorded
+                          </span>
+                          <span className="text-[10px] text-[#64748B] mt-0.5">
+                            {record.actual_attendance} std / {record.actual_food_wasted_kg} kg
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-[#94A3B8] italic">
+                          Forecast Only
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1">
@@ -467,6 +484,7 @@ export const PredictionHistory: React.FC = () => {
           prediction={inspectItem}
           isOpen={!!inspectItem}
           onClose={() => setInspectItem(null)}
+          onActualsUpdated={() => fetchHistory()}
         />
       )}
 
@@ -474,10 +492,10 @@ export const PredictionHistory: React.FC = () => {
       {deleteItem && (
         <ConfirmDialog
           isOpen={!!deleteItem}
-          title="Delete Meal Forecast"
-          message={`Are you sure you want to delete forecast #${deleteItem.id} for ${deleteItem.date} (${deleteItem.meal_type})? This action cannot be undone.`}
-          confirmLabel="Delete Forecast"
-          cancelLabel="Keep Forecast"
+          title="Delete Prediction Record"
+          message={`Are you sure you want to delete prediction record #${deleteItem.id} for ${deleteItem.date} (${deleteItem.meal_type})? Historical data will be permanently removed.`}
+          confirmLabel="Delete Record"
+          cancelLabel="Cancel"
           isDestructive={true}
           isLoading={isDeleting}
           onConfirm={handleDeleteConfirm}

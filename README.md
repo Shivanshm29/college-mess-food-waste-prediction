@@ -330,60 +330,157 @@ GET /api/model/info HTTP/1.1
 
 ---
 
-## 7. Testing & Verification
+## 7. Student Meal Intentions & Persistent Workflow
 
-### 7.1 Backend Test Suite (pytest)
-To execute the automated backend test suite:
+The system provides an end-to-end, role-segregated workflow for hostel students to declare meal attendance intentions in advance:
+
+### 7.1 Student Intention Workflow
+1. **Authentication & Identity**: Students authenticate via JWT (`/api/auth/login`). The backend derives the student identity exclusively from the authenticated token; student ID supplied by client payloads is never trusted.
+2. **Meal Options & Menus**: For any selected date, students view Breakfast, Lunch, and Dinner with published menu items, service hours, and cutoff deadlines (`/api/student/meals`).
+3. **Intentions**:
+   - `likely` — Likely to attend
+   - `unlikely` — Not attending
+4. **Revisit Persistence**: When a student revisits the student portal, their previously saved intention is loaded and displayed.
+5. **Modification & Withdrawal**: Students can freely change or withdraw their response up until the configured cutoff time (e.g. 6:30 AM for Breakfast, 11:00 AM for Lunch, 6:00 PM for Dinner).
+6. **Strict Deadline Enforcement**: Submissions or withdrawals after the cutoff deadline are rejected with `HTTP 400 Bad Request` on both the frontend and backend.
+
+### 7.2 Database Schema & Data Integrity
+The application uses SQLite with SQLAlchemy ORM and automatic schema initialization:
+
+- **`meal_intentions` Table**:
+  - `id`: Integer Primary Key (indexed)
+  - `user_id`: Integer Foreign Key referencing `users.id` (indexed)
+  - `date`: String `YYYY-MM-DD` (indexed)
+  - `meal_type`: String (`Breakfast`, `Lunch`, `Dinner`) (indexed)
+  - `status`: String (`likely`, `unlikely`, `unsure`) (indexed)
+  - `notes`: Text (optional student dietary/absence notes)
+  - `created_at`: DateTime (record creation)
+  - `updated_at`: DateTime (last modification)
+  - **Uniqueness Constraint**: `UniqueConstraint("user_id", "date", "meal_type")` ensures a student can have at most one current record per meal date and meal type. Simultaneous submissions perform an atomic upsert in a single transaction.
+- **`meal_intention_audits` Table**:
+  - Tracks timestamped history of intention changes without corrupting the current intention constraint:
+  - `id`, `user_id`, `date`, `meal_type`, `status`, `action` (`CREATED`, `UPDATED`, `WITHDRAWN`), `notes`, `created_at`.
+
+---
+
+## 8. Mess Manager Intentions Monitor & Analytics
+
+Authorized mess managers have real-time visibility into advance dining demand via `/intentions` and the executive dashboard widget:
+
+### 8.1 Summary Headcounts
+For any calendar date (with quick-select shortcuts for Today, Tomorrow, and Day After):
+- **Per-Meal Breakdown**:
+  - **Likely to attend**: Students who confirmed planned attendance.
+  - **Not attending**: Students who confirmed absence.
+  - **No response**: Calculated strictly as `max(0, 556 - total_submitted)` based on the configured 556-student dining capacity.
+- **Unique Students vs. Total Responses**:
+  - `total_submitted_intentions`: Total meal records (e.g., if 1 student answers Breakfast, Lunch, and Dinner, count = 3).
+  - `total_unique_students`: Distinct students who submitted $\ge 1$ intention for that date (count = 1). Overcounting is mathematically prevented using `func.count(func.distinct(MealIntention.user_id))`.
+
+### 8.2 Visual Recharts Comparison & Accessibility
+- Compact comparison chart comparing `Likely to attend`, `Not attending`, and `No response` per meal.
+- **Accessible Table Alternative**: A 1-click toggle (`Show Accessible Table`) renders full tabular data with semantic headers (`<th>`, `aria-label`) for screen readers and high-contrast review.
+
+### 8.3 Filterable & Paginated Individual Responses Table
+- Displays Student Name, Username, Room/Hostel, Meal Date, Meal Slot, Status Badge, Notes, and Submission Timestamp.
+- Filterable by meal type (`Breakfast`, `Lunch`, `Dinner`) and status (`likely`, `unlikely`).
+- Server-side search by student name or room number.
+- Pagination controls (15 records per page).
+
+---
+
+## 9. Machine Learning Integration & Future Retraining Plan
+
+### 9.1 Ground-Truth Separation Policy (CRITICAL)
+- **Student Intentions $\neq$ Physical Attendance**: Intentions represent advance voluntary plans, not turnstile entry scans or food eaten.
+- **Model Predictions $\neq$ Measured Fact**: Regression outputs (`expected_students`, `expected_food_required_kg`, `expected_food_wastage_kg`) are statistical estimates.
+- **Operational Measurements**: Actual food cooked, students served, and physical wastage (kg) remain `NULL` until measured by kitchen staff. Never fabricate or extrapolate operational measurements from intentions.
+
+### 9.2 Zero Automatic Retraining Policy
+- The production ML model (`mess_prediction_model.joblib`) is **NEVER** retrained automatically upon student submission.
+- Automatic retraining on noisy, unverified self-reported intentions causes catastrophic drift and operational instability.
+- Aggregated intentions are surfaced in the prediction results modal as **contextual decision support** alongside the ML model's baseline estimates.
+
+### 9.3 Offline Training Data Export Utility
+Managers can export clean datasets combining calendar dates, advance student intentions, and linked operational records:
+- **Endpoint**: `GET /api/intentions/export?format=csv` (or `format=json`).
+- **Export Columns**:
+  - `meal_date`, `day_of_week`, `meal_type`, `menu_items`, `special_meal`
+  - `intentions_likely_count`, `intentions_unlikely_count`, `intentions_total_submitted`, `intentions_turnout_pct`
+  - `predicted_students`, `predicted_food_kg`, `predicted_waste_kg`
+  - `actual_students_served`, `actual_food_prepared_kg`, `actual_food_consumed_kg`, `actual_food_wastage_kg`
+- **Future Retraining Protocol**:
+  1. Accumulate at least 90–180 days of paired intention records and verified post-meal scale measurements.
+  2. Perform chronological train/test split (e.g. 80% train, 20% holdout).
+  3. Validate candidate models against the baseline ExtraTrees model.
+  4. Deploy updated weights only after manual signoff.
+
+---
+
+## 10. Complete API Reference
+
+| Endpoint | Method | Role | Description |
+|---|---|---|---|
+| `/api/auth/register` | `POST` | Public | Student or manager registration |
+| `/api/auth/login` | `POST` | Public | OAuth2 JWT password login |
+| `/api/auth/me` | `GET` | Authenticated | Current user profile |
+| `/api/student/meals` | `GET` | Student | Available meals, menus, and cutoff status |
+| `/api/student/intentions` | `GET` | Student | Student's own saved intentions |
+| `/api/student/intentions` | `POST` | Student | Submit / update intention before cutoff |
+| `/api/student/intentions/{meal_type}` | `DELETE` | Student | Withdraw intention before cutoff |
+| `/api/intentions/summary` | `GET` | Manager/Admin | Aggregated headcounts, unique student counts, no-response count |
+| `/api/intentions` | `GET` | Manager/Admin | Paginated student intentions table with filters |
+| `/api/intentions/export` | `GET` | Manager/Admin | CSV/JSON ML training dataset export |
+| `/api/predictions` | `POST` | Manager/Admin | Generate and persist meal forecast with intentions context |
+| `/api/predictions/{id}` | `PATCH` | Manager/Admin | Log verified operational actuals (students served, waste kg) |
+| `/api/dashboard/summary` | `GET` | Manager/Admin | High-level mess KPI summary and recent forecast logs |
+| `/api/analytics/summary` | `GET` | Manager/Admin | Historical meal-wise waste and turnout averages |
+| `/api/model/info` | `GET` | Public | ML architecture, features, and academic transparency disclaimer |
+
+---
+
+## 11. Testing & Verification
+
+### 11.1 Backend Test Suite (pytest)
 ```bash
 python -m pytest backend/tests -v
 ```
-**Test Coverage Includes:**
-- `test_auth.py`: Registration, duplicate username/email rejection, bcrypt password hashing, login via username & email, bad password handling, unauthorized access protection, and logout.
-- `test_predictions.py`: Generation, physical bounds validation ($0 \le \text{students} \le 556$, $\text{waste} \le \text{food}$), date auto-derivation, malformed payload validation, ownership isolation (User A cannot inspect/delete User B's records), search & meal filters.
-- `test_dashboard.py`: Empty state handling (returns zeroed metrics and `has_history=false` without invented stats), and populated aggregates.
-- `test_model.py`: API health check, model info metadata, and direct ML inference pipeline validation.
-- **Result:** `23 passed in 5.31s`.
+**Total:** **72 passed in 30.60s** across 7 test suites:
+- `test_intentions.py` (13 tests): Submissions, updates, withdrawals, cutoff enforcement, invalid values, isolation between students, manager role enforcement, aggregate calculations, no-response count calculation against 556 capacity, SQLite persistence across restarts, dynamic updates, empty states, and model immutability.
+- `test_auth.py` (10 tests): RBAC, passwords, duplicate email/username handling.
+- `test_student.py` (6 tests): Student portal endpoints, menu schedule, and cutoff checks.
+- `test_predictions.py` (17 tests): ML forecasts, bounds validation, actual outcomes logging.
+- `test_dashboard.py` (3 tests): Empty states and KPI summary aggregates.
+- `test_model.py` (4 tests): ML pipeline integrity and model metadata.
+- `test_validation.py` (19 tests): Pydantic input constraints and sanitization.
 
-### 7.2 Frontend Component Tests (Vitest)
-To execute frontend component tests:
+### 11.2 Frontend Test Suite (Vitest)
 ```bash
 cd frontend
 npm run test
 ```
-**Test Coverage Includes:**
-- `StatCard.test.tsx`: Correct rendering of values, labels, units, and custom semantic styling.
-- `Badge.test.tsx`: Semantic icons, aria-hidden attributes, and text indicators.
-- `Modal.test.tsx`: Dialog role, title binding, escape handling, and close callbacks.
-- **Result:** `3 test files, 6 passed in 1.70s`.
+**Total:** **42 passed across 10 test files**:
+- `ManagerIntentions.test.tsx` (6 tests): Unique students count, aggregate stats, table rendering, Recharts/accessible table toggle, meal filters, empty states, HCI interpretation notices.
+- `StudentMealPanel.test.tsx` (6 tests): Intentions selection, submission, cutoff closure, empty menus.
+- `MenuRecommendationsCard.test.tsx`, `Modal.test.tsx`, `ConfirmDialog.test.tsx`, `StatCard.test.tsx`, `Badge.test.tsx`, `StudentBadge.test.tsx`, `LiveAnnouncer.test.tsx`, `validation.test.ts`.
 
-### 7.3 Frontend Production Build Validation
-To ensure full TypeScript and bundling compatibility:
+### 11.3 Production Build Validation
 ```bash
 cd frontend
 npm run build
 ```
-- **Result:** TypeScript compile (`tsc -b`) and Vite production bundle generated without errors (`dist/index.html`, `dist/assets/`).
+**Result:** `tsc -b && vite build` succeeded in 7.42s with 0 errors.
 
 ---
 
-## 8. Human-Computer Interaction & Accessibility Highlights
+## 12. Human-Computer Interaction (Shneiderman’s 8 Golden Rules)
 
-- **Palette:** White `#FFFFFF`, Neutral `#F8FAFC`, Borders `#E2E8F0`, Dark Text `#1E293B`, Primary Blue `#2563EB`, Success `#15803D`, Warning `#B45309`.
-- **Contrast:** Exceeds WCAG 2.2 AA minimums (Body text contrast is 12.6:1).
-- **Usability Heuristics:**
-  - Auto-derives day of week and weekend status from calendar date selection (recognition over recall).
-  - Pre-fills `"Special"` menu when special feast is selected while preserving manager editing.
-  - Form validation preserves inputs on error so managers never lose progress.
-  - Confirmation modals for destructive deletions (user control & error recovery).
-- **Accessibility:** Keyboard skip link (`#main-content`), visible focus rings, ARIA dialog roles, live announcements for screen readers, and an **accessible table alternative** for all visual charts.
-- Detailed design rationale and testing checklists are documented in:
-  - [HCI_RATIONALE.md](file:///c:/Users/shiva/Desktop/college/mllab/HCI/UI/HCI_RATIONALE.md)
-  - [USABILITY_CHECKLIST.md](file:///c:/Users/shiva/Desktop/college/mllab/HCI/UI/USABILITY_CHECKLIST.md)
-
-
-
-
-
-
-the menu items should be decided upon by itself after i select the date and the meal type(breakfast,lunch etc) from the options available (incase of special dinner keep the items section as special) , 
- also as each month the menu changes the changes based on it should be easy and the predicting model should be trained accodingly as well and the prefomance and accuracy should not decrease
+The meal intentions and prediction workflows strictly adhere to Shneiderman’s Eight Golden Rules:
+1. **Consistency**: Unified meal names (`Breakfast`, `Lunch`, `Dinner`), statuses (`Likely to attend`, `Not attending`), color tokens (Emerald for likely, Rose for unlikely, Slate for unresponded), and standardized typography throughout.
+2. **Universal Usability**: Accessible Recharts toggle providing semantic tables for assistive technology, responsive layouts across mobile/desktop, and WCAG 2.2 AA compliant contrast ratios ($>12:1$).
+3. **Informative Feedback**: Real-time loading spinners, badge indicators, saved confirmations, and deadline countdowns.
+4. **Design Dialogs to Yield Closure**: Clear submission confirmation modals and summary recaps after modifying an intention.
+5. **Error Prevention**: Dual frontend & backend deadline validation; database uniqueness constraints preventing duplicate submissions; integer capacity clamping ($0 \le \text{attendance} \le 556$).
+6. **Permit Easy Reversal of Actions**: Students can edit or withdraw their intention at any time before the cutoff with one click.
+7. **Keep Users in Control**: Clear role segregation between student voluntary declarations and manager operational reviews. The system empowers human kitchen managers to make batch cooking choices rather than making autonomous decisions.
+8. **Reduce Short-Term Memory Load**: Selected date, meal, current saved response, cutoff deadline, and capacity remain in persistent view without requiring mental recall from other screens.

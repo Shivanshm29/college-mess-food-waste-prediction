@@ -7,6 +7,7 @@ from backend.app.ml_service import ml_service
 from backend.app.models import (
     MealFeedback,
     MealIntention,
+    MealIntentionAudit,
     Prediction,
     StudentNotification,
     User,
@@ -85,17 +86,42 @@ def get_cutoff_status(meal_date_str: str, meal_type: str) -> tuple[bool, str, Op
         return False, cutoff_time_str, None, cutoff_iso
 
 
-def get_menu_for_date_meal(db: Session, date_str: str, day_name: str, meal_type: str) -> tuple[str, str]:
-    """Retrieve menu and category for a date and meal slot from prediction or weekly schedule."""
+def get_menu_for_date_meal(
+    db: Session, date_str: str, day_name: str, meal_type: str
+) -> tuple[str, str, bool, Optional[str]]:
+    """
+    Retrieve menu, category, is_special flag, and special notice for a date and meal slot.
+    When a meal is a special menu, returns a clear special notice and designates
+    the menu as 'Special Menu (Festive Feast)' instead of random routine dishes.
+    """
     pred = db.query(Prediction).filter(Prediction.date == date_str, Prediction.meal_type == meal_type).first()
+
+    # Determine if special meal:
+    # 1. Prediction explicitly marked special_meal == "Yes"
+    # 2. Or menu items contain 'special' (e.g., 'Special', 'Special Feast')
+    # 3. Or Sunday Dinner (standard recurring special feast in college schedule)
+    is_special = False
+    if pred and pred.special_meal == "Yes":
+        is_special = True
+    elif pred and pred.main_menu_items and pred.main_menu_items.strip().lower() in ("special", "special feast", "special dinner", "special meal"):
+        is_special = True
+    elif day_name == "Sunday" and meal_type == "Dinner":
+        is_special = True
+
+    if is_special:
+        special_notice = (
+            f"Special Menu Notice: {meal_type} on {date_str} is designated as a Special Feast by Mess Management. "
+            "A curated festive special menu will be served. Regular routine items do not apply."
+        )
+        return "Special Menu (Festive Feast)", "Special Feast", True, special_notice
+
     if pred and pred.main_menu_items:
-        category = "Special Feast" if pred.special_meal == "Yes" else "Published Menu"
-        return pred.main_menu_items, category
+        return pred.main_menu_items, "Published Menu", False, None
 
     sched_menu = ml_service.get_scheduled_menu(day_name, meal_type)
     if sched_menu:
-        return sched_menu, "Regular Schedule"
-    return "Menu not published yet", "Unscheduled"
+        return sched_menu, "Regular Schedule", False, None
+    return "Menu not published yet", "Unscheduled", False, None
 
 
 def ensure_seed_notifications(db: Session):
@@ -117,7 +143,7 @@ def ensure_seed_notifications(db: Session):
             ),
             StudentNotification(
                 title="Sunday Special Dinner",
-                message="Afgani Paneer, Dal Tadka, and Kheer scheduled for Sunday dinner. Please submit your attendance intention early to assist portion scaling.",
+                message="Special Feast: Afgani Paneer, Dal Tadka, and Kheer scheduled for Sunday dinner. Please submit your attendance intention early to assist portion scaling.",
                 category="menu_change",
                 is_read=False,
             ),
@@ -153,7 +179,7 @@ def get_student_dashboard(
     for meal in ["Breakfast", "Lunch", "Dinner"]:
         cfg = MEAL_CONFIG[meal]
         is_closed, cutoff_str, closure_reason, cutoff_iso = get_cutoff_status(today_str, meal)
-        menu_items, category = get_menu_for_date_meal(db, today_str, day_name, meal)
+        menu_items, category, is_special, special_notice = get_menu_for_date_meal(db, today_str, day_name, meal)
         intention = today_intentions.get(meal)
 
         if not intention and not is_closed:
@@ -169,6 +195,8 @@ def get_student_dashboard(
                 closure_reason=closure_reason,
                 menu_items=menu_items,
                 category=category,
+                is_special=is_special,
+                special_notice=special_notice,
                 current_intention=MealIntentionResponse.model_validate(intention) if intention else None,
             )
         )
@@ -181,7 +209,7 @@ def get_student_dashboard(
         up_day_name = DAYS_LIST[up_date.weekday()]
 
         for m_type in ["Breakfast", "Lunch", "Dinner"]:
-            m_items, cat = get_menu_for_date_meal(db, up_date_str, up_day_name, m_type)
+            m_items, cat, is_spec, spec_note = get_menu_for_date_meal(db, up_date_str, up_day_name, m_type)
             user_int = db.query(MealIntention).filter(
                 MealIntention.user_id == current_user.id,
                 MealIntention.date == up_date_str,
@@ -196,6 +224,8 @@ def get_student_dashboard(
                 "cutoff_time": MEAL_CONFIG[m_type]["cutoff_time"],
                 "menu_items": m_items,
                 "category": cat,
+                "is_special": is_spec,
+                "special_notice": spec_note,
                 "intention_status": user_int.status if user_int else None,
             })
 
@@ -218,6 +248,19 @@ def get_student_dashboard(
         .all()
     )
     announcements = [StudentNotificationResponse.model_validate(n) for n in notifications_records]
+
+    special_today = [m for m in today_meals if m.is_special]
+    if special_today:
+        meals_txt = ", ".join(m.meal_type for m in special_today)
+        special_notice_obj = StudentNotificationResponse(
+            id=999999,
+            title=f"Special Menu Alert: {meals_txt}",
+            message=f"Today's {meals_txt} features a Special Feast Menu! A curated festive meal will be served instead of routine dishes. Please indicate your intention to help the mess team prepare accurate portions.",
+            category="menu_change",
+            is_read=False,
+            created_at=datetime.now(),
+        )
+        announcements = [special_notice_obj] + announcements
 
     return StudentDashboardResponse(
         today_date=today_str,
@@ -257,7 +300,7 @@ def get_student_schedule(
         for meal in ["Breakfast", "Lunch", "Dinner"]:
             cfg = MEAL_CONFIG[meal]
             is_closed, cutoff_str, closure_reason, cutoff_iso = get_cutoff_status(cur_date_str, meal)
-            menu_items, category = get_menu_for_date_meal(db, cur_date_str, day_name, meal)
+            menu_items, category, is_special, special_notice = get_menu_for_date_meal(db, cur_date_str, day_name, meal)
             user_int = db.query(MealIntention).filter(
                 MealIntention.user_id == current_user.id,
                 MealIntention.date == cur_date_str,
@@ -273,6 +316,8 @@ def get_student_schedule(
                 "closure_reason": closure_reason,
                 "menu_items": menu_items,
                 "category": category,
+                "is_special": is_special,
+                "special_notice": special_notice,
                 "current_intention": MealIntentionResponse.model_validate(user_int) if user_int else None,
             })
 
@@ -305,7 +350,7 @@ def save_meal_intention(
     if is_closed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=reason or f"The response window for {data.meal_type} has closed.",
+            detail="The response deadline has passed. You can no longer change this intention.",
         )
 
     # Upsert intention
@@ -318,6 +363,15 @@ def save_meal_intention(
     if existing:
         existing.status = data.status
         existing.notes = data.notes.strip() if data.notes else None
+        audit = MealIntentionAudit(
+            user_id=current_user.id,
+            date=data.date,
+            meal_type=data.meal_type,
+            status=data.status,
+            action="UPDATED",
+            notes=data.notes.strip() if data.notes else None,
+        )
+        db.add(audit)
         db.commit()
         db.refresh(existing)
         return MealIntentionResponse.model_validate(existing)
@@ -330,6 +384,15 @@ def save_meal_intention(
         notes=data.notes.strip() if data.notes else None,
     )
     db.add(new_intention)
+    audit = MealIntentionAudit(
+        user_id=current_user.id,
+        date=data.date,
+        meal_type=data.meal_type,
+        status=data.status,
+        action="CREATED",
+        notes=data.notes.strip() if data.notes else None,
+    )
+    db.add(audit)
     db.commit()
     db.refresh(new_intention)
     return MealIntentionResponse.model_validate(new_intention)
@@ -358,12 +421,22 @@ def withdraw_meal_intention(
     if is_closed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=reason or "Cannot withdraw intention after response window has closed.",
+            detail="The response deadline has passed. You can no longer change this intention.",
         )
 
+    # Log withdrawal in audit trail before deleting current intention
+    audit = MealIntentionAudit(
+        user_id=current_user.id,
+        date=intention.date,
+        meal_type=intention.meal_type,
+        status=intention.status,
+        action="WITHDRAWN",
+        notes="Intention withdrawn by student",
+    )
+    db.add(audit)
     db.delete(intention)
     db.commit()
-    return {"message": "Meal intention withdrawn successfully."}
+    return {"message": "Your response was withdrawn successfully."}
 
 
 @router.get("/intentions", response_model=List[MealIntentionResponse], summary="Get student intentions history")
